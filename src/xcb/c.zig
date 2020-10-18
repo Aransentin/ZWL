@@ -252,6 +252,8 @@ const pfn_xcb_put_image = fn (conn: *xcb_connection_t, format: u8, drawable: xcb
 pub var xcb_put_image: pfn_xcb_put_image = undefined;
 const pfn_xcb_create_gc = fn (conn: *xcb_connection_t, cid: xcb_gcontext_t, drawable: xcb_drawable_t, value_mask: u32, value_list: ?[*]const u32) callconv(.C) xcb_void_cookie_t;
 pub var xcb_create_gc: pfn_xcb_create_gc = undefined;
+const pfn_xcb_free_gc = fn (conn: *xcb_connection_t, gc: xcb_gcontext_t) callconv(.C) xcb_void_cookie_t;
+pub var xcb_free_gc: pfn_xcb_free_gc = undefined;
 
 pub var xcb: std.DynLib = undefined;
 pub fn initXCB() !void {
@@ -276,6 +278,7 @@ pub fn initXCB() !void {
     xcb_intern_atom_reply = xcb.lookup(pfn_xcb_intern_atom_reply, "xcb_intern_atom_reply") orelse return error.SymbolNotFound;
     xcb_put_image = xcb.lookup(pfn_xcb_put_image, "xcb_put_image") orelse return error.SymbolNotFound;
     xcb_create_gc = xcb.lookup(pfn_xcb_create_gc, "xcb_create_gc") orelse return error.SymbolNotFound;
+    xcb_free_gc = xcb.lookup(pfn_xcb_free_gc, "xcb_free_gc") orelse return error.SymbolNotFound;
 }
 
 pub fn deinitXCB() void {

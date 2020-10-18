@@ -5,42 +5,34 @@ const Platform = zwl.Platform(.{
     .platforms_enabled = .{ .x11 = true, .wayland = false, .windows = false },
     .single_window = false,
     .render_software = true,
-    .x11_use_xcb = false,
+    .x11_use_xcb = true,
 });
 
 pub fn main() !void {
-    var platform = try Platform.init(std.heap.page_allocator, event_callback, .{});
-
+    var platform = try Platform.init(std.heap.page_allocator, .{});
     defer platform.deinit();
 
-    var window = try platform.createWindow(.{ .title = "Hello ZWL", .width = 1024, .height = 512, .resizeable = false, .track_damage = true });
+    var window = try platform.createWindow(.{ .title = "Hello ZWL", .width = 1024, .height = 512, .resizeable = false, .track_damage = true, .backing_store = true, .visible = true });
     defer window.destroy();
-    try window.show();
 
-    while (!program_should_exit) {
-        try platform.waitForEvents();
-    }
-}
+    while (true) {
+        const event = try platform.waitForEvent();
+        defer platform.freeEvent(event);
 
-var program_should_exit: bool = false;
-
-fn event_callback(event: Platform.Event) void {
-    switch (event) {
-        .WindowResized => |window| {
-            const size = window.getSize();
-            std.log.debug("*notices size {}x{}* OwO what's this", .{ size[0], size[1] });
-        },
-        .WindowDamaged => |damage| {
-            std.log.debug("Taking damage: {}x{} @ {}x{}", .{ damage.w, damage.h, damage.x, damage.y });
-            paint(damage.window) catch |err| {
-                std.log.debug("Something is b0rked: {}", .{err});
-                program_should_exit = true;
-            };
-        },
-        .WindowDestroyed => |window| {
-            std.log.debug("RIP", .{});
-            program_should_exit = true;
-        },
+        switch (event) {
+            .WindowResized => |win| {
+                const size = win.getSize();
+                std.log.debug("*notices size {}x{}* OwO what's this", .{ size[0], size[1] });
+            },
+            .WindowDestroyed => |win| {
+                std.log.debug("RIP", .{});
+                return;
+            },
+            .WindowDamaged => |damage| {
+                std.log.debug("Taking damage: {}x{} @ {}x{}", .{ damage.w, damage.h, damage.x, damage.y });
+                try paint(damage.window);
+            },
+        }
     }
 }
 

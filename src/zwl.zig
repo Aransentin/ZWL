@@ -109,51 +109,48 @@ pub const WindowMode = enum {
     ExclusiveFullscreen,
 };
 
-/// Options for windows.
+/// Options for windows, used during window creation.
 pub const WindowOptions = struct {
     /// The title of the window. Ignored if the platform does not support it. If specifying a title is not optional
     /// for the current platform, a null title will be interpreted as an empty string.
-    title: ?[]const u8,
+    title: ?[]const u8 = null,
 
-    /// The initial width of the window, in pixels.
-    width: u16,
-
-    /// The initial height of the window, in pixels.
-    height: u16,
-
-    mode: WindowMode = .Windowed,
+    width: ?u16 = null,
+    height: ?u16 = null,
+    visible: ?bool = null,
+    mode: ?WindowMode = null,
 
     /// Whether the user is allowed to resize the window or not. Note that this is more of a suggestion,
     /// and the window manager could resize us anyway if it so chooses.
-    resizeable: bool = true,
+    resizeable: ?bool = null,
 
     /// Set this to "true" you want the default system border and title bar with the name, buttons, etc. when windowed.
     /// Set this to "false" if you're a time traveller from 1999 developing your latest winamp skin or something.
-    decorations: bool = true,
+    decorations: ?bool = null,
 
     /// Set 'transparent' to true if you'd like to get pixels with an alpha component, so that parts of your window
     /// can be made transparent. Note that this will only work if the platform has a compositor running.
-    transparent: bool = false,
+    transparent: ?bool = null,
 
     /// If you set 'hdr' to true, the pixel buffer(s) you get is in the native window/monitor colour depth,
     /// which can have more (or fewer, technically) than 8 bits per colour.
     /// If false, the library will always give you an 8-bit buffer and automatically convert it to
     /// the native depth for you if needed.
-    hdr: bool = false,
+    hdr: ?bool = null,
 
     /// This means that the event callback will notify you if any of your window is "damaged", i.e.
     /// needs to be re-rendered due to (for example) another window having covered part of it.
     /// Not needed if you're constantly re-rendering the entire window anyway.
-    track_damage: bool = false,
+    track_damage: ?bool = null,
 
     /// If this is set to true, you will get a callback whenever vblank happens. This enables
     /// rendering to the screen at the right moment to prevent tearing and similar artefacts.
-    track_vblank: bool = false,
+    track_vblank: ?bool = null,
 
     /// If this is set to true, the contents of the window will be saved so that you don't have to
     /// re-render anything after another window has obscured it. On some platforms (e.g. Wayland)
     /// this is mandatory so this option does nothing.
-    backing_store: bool = true,
+    backing_store: ?bool = null,
 };
 
 pub const EventType = enum {
@@ -175,15 +172,15 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
         X11: if (settings.platforms_enabled.x11) *PlatformX11 else void,
         Windows: if (settings.platforms_enabled.windows) *PlatformWin else void,
 
-        pub fn init(allocator: *Allocator, callback: fn (event: Event) void, options: PlatformOptions) !Self {
+        pub fn init(allocator: *Allocator, options: PlatformOptions) !Self {
             if (settings.platforms_enabled.wayland) blk: {
-                return PlatformWayland.init(allocator, callback, options) catch break :blk;
+                return PlatformWayland.init(allocator, options) catch break :blk;
             }
             if (settings.platforms_enabled.x11) blk: {
-                return PlatformX11.init(allocator, callback, options) catch break :blk;
+                return PlatformX11.init(allocator, options) catch break :blk;
             }
             if (settings.platforms_enabled.windows) blk: {
-                return PlatformWindows.init(allocator, callback, options) catch break :blk;
+                return PlatformWindows.init(allocator, options) catch break :blk;
             }
             return error.NoPlatformAvailable;
         }
@@ -196,12 +193,20 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             }
         }
 
-        pub fn waitForEvents(self: Self) !void {
+        pub fn waitForEvent(self: Self) !Event {
             return switch (self) {
-                .Wayland => |native| if (settings.platforms_enabled.wayland) native.waitForEvents() else unreachable,
-                .X11 => |native| if (settings.platforms_enabled.x11) native.waitForEvents() else unreachable,
-                .Windows => |native| if (settings.platforms_enabled.windows) native.waitForEvents() else unreachable,
+                .Wayland => |native| if (settings.platforms_enabled.wayland) native.waitForEvent() else unreachable,
+                .X11 => |native| if (settings.platforms_enabled.x11) native.waitForEvent() else unreachable,
+                .Windows => |native| if (settings.platforms_enabled.windows) native.waitForEvent() else unreachable,
             };
+        }
+
+        pub fn freeEvent(self: Self, event: Event) void {
+            switch (self) {
+                .Wayland => |native| if (settings.platforms_enabled.wayland) native.freeEvent(event) else unreachable,
+                .X11 => |native| if (settings.platforms_enabled.x11) native.freeEvent(event) else unreachable,
+                .Windows => |native| if (settings.platforms_enabled.windows) native.freeEvent(event) else unreachable,
+            }
         }
 
         pub fn createWindow(self: Self, options: WindowOptions) !Window {
@@ -229,22 +234,6 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => |native| if (settings.platforms_enabled.x11) native.destroy() else unreachable,
                     .Windows => |native| if (settings.platforms_enabled.windows) native.destroy() else unreachable,
                 }
-            }
-
-            pub fn show(self: Window) !void {
-                try switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) native.show() else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) native.show() else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) native.show() else unreachable,
-                };
-            }
-
-            pub fn hide(self: Window) !void {
-                try switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) native.hide() else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) native.hide() else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) native.hide() else unreachable,
-                };
             }
 
             pub fn getSize(self: Window) [2]u16 {

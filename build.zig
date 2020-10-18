@@ -17,7 +17,7 @@ pub fn build(b: *Builder) void {
     example_exe.single_threaded = true;
     example_exe.setTarget(target);
     example_exe.setBuildMode(mode);
-    // example_exe.linkLibC();
+    example_exe.linkLibC();
 
     example_exe.setOutputDir("zig-cache/bin");
     example_build_step.dependOn(&example_exe.step);

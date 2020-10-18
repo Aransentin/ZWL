@@ -6,41 +6,37 @@ usingnamespace @import("x11/types.zig");
 const DisplayInfo = @import("x11/display_info.zig").DisplayInfo;
 const auth = @import("x11/auth.zig");
 
-fn xpad(n: usize) usize {
-    return @bitCast(usize, (-%@bitCast(isize, n)) & 3);
-}
+const ReplyCBuffer = struct {
+    const ReplyHandler = enum {
+        ExtensionQueryBigRequests,
+        BigRequestsEnable,
+    };
 
-const XEventType = enum {
-    ExtensionQueryBigRequests,
-    BigRequestsEnable,
-};
+    const ReplyEvent = struct {
+        seq: u16,
+        handler: ReplyHandler,
+    };
 
-const XEvent = struct {
-    evtype: XEventType,
-    seq: u16,
-};
-
-const XEventCBuffer = struct {
-    mem: [32]XEvent = undefined,
+    mem: [32]ReplyEvent = undefined,
     tail: u8 = 0,
     head: u8 = 0,
     seq_next: u16 = 1,
 
-    pub fn len(self: *XEventCBuffer) usize {
+    pub fn len(self: *ReplyCBuffer) usize {
         var hp: usize = self.head;
         if (self.head < self.tail)
             hp += self.mem.len;
         return hp - self.tail;
     }
 
-    pub fn push(self: *XEventCBuffer, evtype: XEventType) !void {
+    pub fn push(self: *ReplyCBuffer, handler: ReplyHandler) !void {
         if (self.len() == self.mem.len - 1) return error.OutOfMemory;
-        self.mem[self.head] = .{ .evtype = evtype, .seq = self.seq_next };
+        self.mem[self.head] = .{ .handler = handler, .seq = self.seq_next };
         self.seq_next += 1;
         self.head = @intCast(u8, (self.head + 1) % self.mem.len);
     }
 
-    pub fn get(self: *XEventCBuffer, seq: u16) ?XEventType {
+    pub fn get(self: *ReplyCBuffer, seq: u16) ?ReplyHandler {
         while (self.len() > 0) {
             const tailp = self.tail;
             const ev = self.mem[tailp];
@@ -48,7 +44,7 @@ const XEventCBuffer = struct {
                 unreachable;
             } else if (ev.seq == seq) {
                 self.tail = @intCast(u8, (self.tail + 1) % self.mem.len);
-                return ev.evtype;
+                return ev.handler;
             } else {
                 return null;
             }
@@ -67,17 +63,19 @@ pub fn Platform(comptime Parent: anytype) type {
         root_depth: u8 = undefined,
         root_color_bits: u8 = undefined,
         xid_next: u32,
+        seq_next: u16 = 1, // TODO: Make sure to increase this for every call that can generate an error
 
         max_req_len: u32 = 262140,
-
-        evbuf: XEventCBuffer = .{},
 
         windows: if (Parent.settings.single_window) void else []*Window,
         single_window: if (!Parent.settings.single_window) void else Window = undefined,
 
-        callback: fn (event: Parent.Event) void,
+        rbuf: [1024]u8 = undefined,
+        rbuf_n: usize = 0,
 
-        pub fn init(allocator: *Allocator, callback: fn (event: Parent.Event) void, options: zwl.PlatformOptions) !Parent {
+        replies: ReplyCBuffer = .{},
+
+        pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !Parent {
             var display_info_buf: [256]u8 = undefined;
             var display_info_allocator = std.heap.FixedBufferAllocator.init(display_info_buf[0..]);
             const display_info = try DisplayInfo.init(allocator, options.x11.host, options.x11.display, options.x11.screen);
@@ -161,7 +159,6 @@ pub fn Platform(comptime Parent: anytype) type {
             self.* = Self{
                 .allocator = allocator,
                 .file = file,
-                .callback = callback,
                 .windows = if (Parent.settings.single_window) undefined else &[0]*Window{},
                 .xid_next = resource_id_base,
             };
@@ -192,18 +189,58 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
             }
 
-            // Init extensions
             var wbuf = std.io.bufferedWriter(self.file.writer());
             var writer = wbuf.writer();
             try writer.writeAll(std.mem.asBytes(&QueryExtensionRequest{ .length_request = 5, .length_name = 12 }));
             try writer.writeAll("BIG-REQUESTS");
-            try self.evbuf.push(.ExtensionQueryBigRequests);
+            try self.replies.push(.ExtensionQueryBigRequests);
 
             try wbuf.flush();
-            try self.flushEvents();
-
+            try self.handleInitEvents();
             return Parent{ .X11 = self };
         }
+
+        fn handleInitEvents(self: *Self) !void {
+            var rbuf = std.io.bufferedReader(self.file.reader());
+            var wbuf = std.io.bufferedWriter(self.file.writer());
+            var reader = rbuf.reader();
+            var writer = wbuf.writer();
+
+            while (self.replies.len() > 0) {
+                var evdata: [32]u8 align(8) = undefined;
+                _ = try reader.readAll(evdata[0..]);
+
+                const evtype = evdata[0] & 0x7F;
+                const seq = std.mem.readIntNative(u16, evdata[2..4]);
+                const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
+
+                if (evtype == @enumToInt(XEventCode.Error)) {
+                    unreachable; // We will never make mistakes during init
+                } else if (evtype != @enumToInt(XEventCode.Reply)) {
+                    continue; // The only possible events here would be stuff like vblank notifications which we don't care about
+                }
+
+                const handler = self.replies.get(seq) orelse unreachable;
+                switch (handler) {
+                    .ExtensionQueryBigRequests => {
+                        const qreply = @ptrCast(*const QueryExtensionReply, &evdata);
+                        if (qreply.present != 0) {
+                            try writer.writeAll(std.mem.asBytes(&BigReqEnable{ .opcode = qreply.major_opcode }));
+                            try self.replies.push(.BigRequestsEnable);
+                        }
+                    },
+                    .BigRequestsEnable => {
+                        const qreply = @ptrCast(*const BigReqEnableReply, &evdata);
+                        self.max_req_len = qreply.max_req_len;
+                    },
+                    // else => unreachable, // The other events cannot appear during init
+                }
+                if (rbuf.fifo.readableLength() == 0) {
+                    try wbuf.flush();
+                }
+            }
+        }
+
         pub fn deinit(self: *Self) void {
             self.file.close();
 
@@ -219,61 +256,57 @@ pub fn Platform(comptime Parent: anytype) type {
             return id;
         }
 
-        fn flushEvents(self: *Self) !void {
-            while (true) {
-                if (self.evbuf.len() == 0)
-                    return;
-                try self.waitForEvents();
+        pub fn waitForEvent(self: *Self) !Parent.Event {
+            var p: usize = 0;
+            defer {
+                std.mem.copy(u8, self.rbuf[0 .. self.rbuf_n - p], self.rbuf[p..self.rbuf_n]);
+                self.rbuf_n -= p;
             }
-        }
 
-        pub fn waitForEvents(self: *Self) !void {
-            var rbuf = std.io.bufferedReader(self.file.reader());
-            var wbuf = std.io.bufferedWriter(self.file.writer());
-            var reader = rbuf.reader();
-            var writer = wbuf.writer();
-
+            const generic_event_size = 32;
             while (true) {
-                var evdata: [32]u8 align(8) = undefined;
-                _ = try reader.readAll(evdata[0..]);
+                // If we've skipped so many events that we have to adjust the rbuf prematurely...
+                if (self.rbuf.len - p < generic_event_size) {
+                    std.mem.copy(u8, self.rbuf[0 .. self.rbuf_n - p], self.rbuf[p..self.rbuf_n]);
+                    self.rbuf_n -= p;
+                    p = 0;
+                }
 
+                // Make sure we've got data for at least one event
+                while (self.rbuf_n - p < generic_event_size) {
+                    self.rbuf_n += try self.file.read(self.rbuf[self.rbuf_n..]);
+                }
+
+                const evdata = self.rbuf[p .. p + generic_event_size];
+                p += generic_event_size;
                 const evtype = evdata[0] & 0x7F;
-
                 switch (evtype) {
                     @enumToInt(XEventCode.Error) => {
                         std.log.err("TODO: Handle X11 errors", .{});
                     },
                     @enumToInt(XEventCode.Reply) => {
-                        const seq = std.mem.readIntNative(u16, evdata[2..4]);
+                        // explicit reply for some request... hmmmm.
                         const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
-
-                        if (self.evbuf.get(seq)) |rt| switch (rt) {
-                            .ExtensionQueryBigRequests => try self.cbExtensionQueryBigRequests(&evdata, writer),
-                            .BigRequestsEnable => try self.cbBigRequestsEnable(&evdata, writer),
-                        } else {
-                            try reader.skipBytes(extlen, .{ .buf_size = 32 });
-                        }
+                        if (extlen > 0) unreachable; // Can't handle this yet
                     },
-                    @enumToInt(XEventCode.ReparentNotify), @enumToInt(XEventCode.MapNotify) => {
+                    @enumToInt(XEventCode.ReparentNotify), @enumToInt(XEventCode.MapNotify), @enumToInt(XEventCode.UnmapNotify) => {
                         // Whatever for now
                     },
                     @enumToInt(XEventCode.ConfigureNotify) => {
-                        const ev = @ptrCast(*ConfigureNotify, &evdata);
+                        const ev = @ptrCast(*const ConfigureNotify, @alignCast(4, evdata.ptr));
                         if (self.getWindowById(ev.window)) |window| {
                             if (window.width != ev.width or window.height != ev.height) {
                                 window.width = ev.width;
                                 window.height = ev.height;
-                                const pwindow = Parent.Window{ .X11 = window };
-                                const pev = Parent.Event{ .WindowResized = pwindow };
-                                self.callback(pev);
+                                return Parent.Event{ .WindowResized = Parent.Window{ .X11 = window } };
                             }
                         }
                     },
                     @enumToInt(XEventCode.Expose) => {
-                        const ev = @ptrCast(*Expose, &evdata);
+                        const ev = @ptrCast(*const Expose, @alignCast(4, evdata.ptr));
                         if (self.getWindowById(ev.window)) |window| {
                             const pwindow = Parent.Window{ .X11 = window };
-                            const pev = Parent.Event{
+                            return Parent.Event{
                                 .WindowDamaged = .{
                                     .window = pwindow,
                                     .x = ev.x,
@@ -282,41 +315,25 @@ pub fn Platform(comptime Parent: anytype) type {
                                     .h = ev.height,
                                 },
                             };
-                            self.callback(pev);
                         }
                     },
                     @enumToInt(XEventCode.DestroyNotify) => {
-                        const ev = @ptrCast(*DestroyNotify, &evdata);
+                        const ev = @ptrCast(*const DestroyNotify, @alignCast(4, evdata.ptr));
                         if (self.getWindowById(ev.window)) |window| {
                             window.id = 0;
                             const pwindow = Parent.Window{ .X11 = window };
-                            const pev = Parent.Event{ .WindowDestroyed = pwindow };
-                            self.callback(pev);
+                            return Parent.Event{ .WindowDestroyed = pwindow };
                         }
                     },
-                    else => {},
+                    else => {
+                        std.log.debug("Unhandled event: {}", .{evtype});
+                    },
                 }
-
-                if (rbuf.fifo.readableLength() == 0)
-                    break;
             }
-
-            try wbuf.flush();
         }
 
-        fn cbExtensionQueryBigRequests(self: *Self, data: *align(8) [32]u8, writer: anytype) !void {
-            const reply = @ptrCast(*const QueryExtensionReply, data);
-            if (reply.present == 0)
-                return;
-
-            const req = BigReqEnable{ .opcode = reply.major_opcode };
-            try writer.writeAll(std.mem.asBytes(&req));
-            try self.evbuf.push(.BigRequestsEnable);
-        }
-
-        fn cbBigRequestsEnable(self: *Self, data: *align(8) [32]u8, writer: anytype) !void {
-            const reply = @ptrCast(*const BigReqEnableReply, data);
-            self.max_req_len = reply.max_req_len;
+        pub fn freeEvent(self: *Self, event: Parent.Event) void {
+            // Noop, for now
         }
 
         fn getWindowById(self: *Self, id: u32) ?*Window {
@@ -347,9 +364,9 @@ pub fn Platform(comptime Parent: anytype) type {
             win.* = .{
                 .platform = self,
                 .id = self.genXId(),
-                .gc = if (Parent.settings.render_software) self.genXId() else undefined,
-                .width = options.width,
-                .height = options.height,
+                .width = options.width orelse 640,
+                .height = options.height orelse 480,
+                .sw = undefined,
             };
 
             if (!Parent.settings.single_window) {
@@ -366,14 +383,14 @@ pub fn Platform(comptime Parent: anytype) type {
             var values_n: u16 = 0;
             var value_mask: u32 = 0;
             var values: [4]u32 = undefined;
-            if (options.backing_store) {
+            if (options.backing_store == true) {
                 values[values_n] = 1;
                 values_n += 1;
                 value_mask |= CWBackingStores;
             }
 
             values[values_n] = EventStructureNotify;
-            values[values_n] |= if (options.track_damage) @as(u32, EventExposure) else 0;
+            values[values_n] |= if (options.track_damage == true) @as(u32, EventExposure) else 0;
             values_n += 1;
             value_mask |= CWEventMask;
 
@@ -384,13 +401,12 @@ pub fn Platform(comptime Parent: anytype) type {
                 .y = 0,
                 .parent = self.root,
                 .request_length = (@sizeOf(CreateWindow) >> 2) + values_n,
-                .width = options.width,
-                .height = options.height,
+                .width = win.width,
+                .height = win.height,
                 .visual = 0, // todo: if not auto depth, fix
                 .mask = value_mask,
             };
             try writer.writeAll(std.mem.asBytes(&create_window));
-            const event_mask: u32 = EventStructureNotify | if (options.track_damage) EventExposure else 0;
             try writer.writeAll(std.mem.sliceAsBytes(values[0..values_n]));
 
             if (options.resizeable == false) {
@@ -406,9 +422,9 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 const size_hints: SizeHints = .{
                     .flags = (1 << 4) + (1 << 5) + (1 << 8),
-                    .min = [2]u32{ options.width, options.height },
-                    .max = [2]u32{ options.width, options.height },
-                    .base = [2]u32{ options.width, options.height },
+                    .min = [2]u32{ win.width, win.height },
+                    .max = [2]u32{ win.width, win.height },
+                    .base = [2]u32{ win.width, win.height },
                 };
                 try writer.writeAll(std.mem.asBytes(&size_hints));
             }
@@ -428,16 +444,23 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             if (Parent.settings.render_software) {
+                win.sw = .{
+                    .gc = self.genXId(),
+                };
                 const create_gc = CreateGC{
                     .request_length = 4,
-                    .cid = win.gc,
+                    .cid = win.sw.gc,
                     .drawable = .{ .window = win.id },
                     .bitmask = 0,
                 };
                 try writer.writeAll(std.mem.asBytes(&create_gc));
             }
-            try wbuf.flush();
 
+            if (options.visible == true) {
+                try writer.writeAll(std.mem.asBytes(&MapWindow{ .id = win.id }));
+            }
+
+            try wbuf.flush();
             return Parent.Window{ .X11 = win };
         }
 
@@ -447,20 +470,23 @@ pub fn Platform(comptime Parent: anytype) type {
             width: u16,
             height: u16,
 
-            gc: if (Parent.settings.render_software) GCONTEXT else void,
-            pixeldata: []u32 = &[0]u32{},
-            pixeldata_width: u16 = 0,
-            pixeldata_height: u16 = 0,
+            sw: if (Parent.settings.render_software)
+                struct {
+                    gc: GCONTEXT,
+                    data: []u32 = &[0]u32{},
+                    width: u16 = 0,
+                    height: u16 = 0,
+                }
+            else
+                void,
 
             pub fn destroy(self: *Window) void {
                 var wbuf = std.io.bufferedWriter(self.platform.file.writer());
                 var writer = wbuf.writer();
 
                 if (Parent.settings.render_software) {
-                    const free_gc = FreeGC{
-                        .gc = self.gc,
-                    };
-                    writer.writeAll(std.mem.asBytes(&free_gc)) catch {};
+                    writer.writeAll(std.mem.asBytes(&FreeGC{ .gc = self.sw.gc })) catch {};
+                    self.platform.allocator.free(self.sw.data);
                 }
 
                 if (self.id != 0) {
@@ -468,7 +494,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     writer.writeAll(std.mem.asBytes(&destroy_window)) catch {};
                 }
 
-                wbuf.flush() catch {};
+                wbuf.flush() catch {}; // ...
 
                 if (!Parent.settings.single_window) {
                     for (self.platform.windows) |*w, i| {
@@ -483,30 +509,18 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
             }
 
-            pub fn show(self: *Window) !void {
-                if (self.id == 0) unreachable;
-                const map_window = MapWindow{ .id = self.id };
-                try self.platform.file.writer().writeAll(std.mem.asBytes(&map_window));
-            }
-
-            pub fn hide(self: *Window) !void {
-                if (self.id == 0) unreachable;
-                const unmap_window = UnmapWindow{ .id = self.id };
-                try self.platform.file.writer().writeAll(std.mem.asBytes(&unmap_window));
-            }
-
             pub fn getPixelBuffer(self: *Window) !Parent.PixelBuffer {
 
                 // Case 1: PutPixels
-                if (self.pixeldata_width != self.width or self.pixeldata_height != self.height) {
-                    self.pixeldata_width = self.width;
-                    self.pixeldata_height = self.height;
-                    self.pixeldata = try self.platform.allocator.realloc(self.pixeldata, @intCast(usize, self.pixeldata_width) * @intCast(usize, self.pixeldata_height));
+                if (self.sw.width != self.width or self.sw.height != self.height) {
+                    self.sw.width = self.width;
+                    self.sw.height = self.height;
+                    self.sw.data = try self.platform.allocator.realloc(self.sw.data, @intCast(usize, self.sw.width) * @intCast(usize, self.sw.height));
                 }
 
                 // TODO: MIT-SHM
 
-                return Parent.PixelBuffer{ .data = self.pixeldata.ptr, .width = self.pixeldata_width, .height = self.pixeldata_height };
+                return Parent.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
             }
 
             pub fn commitPixelBuffer(self: *Window) !void {
@@ -514,20 +528,23 @@ pub fn Platform(comptime Parent: anytype) type {
                 var wbuf = std.io.bufferedWriter(self.platform.file.writer());
                 var writer = wbuf.writer();
                 const put_image = PutImageBig{
-                    .request_length = 7 + (@intCast(u32, (self.pixeldata.len << 2) + xpad(self.pixeldata.len)) >> 2),
+                    .request_length = 7 + @intCast(u32, self.sw.data.len),
                     .drawable = self.id,
-                    .gc = self.gc,
-                    .width = self.pixeldata_width,
-                    .height = self.pixeldata_height,
+                    .gc = self.sw.gc,
+                    .width = self.sw.width,
+                    .height = self.sw.height,
                     .dst = [2]u16{ 0, 0 },
                     .left_pad = 0,
                     .depth = 24,
                 };
                 try writer.writeAll(std.mem.asBytes(&put_image));
-                try writer.writeAll(std.mem.sliceAsBytes(self.pixeldata));
-                try writer.writeByteNTimes(0, xpad(self.pixeldata.len));
+                try writer.writeAll(std.mem.sliceAsBytes(self.sw.data));
                 try wbuf.flush();
             }
         };
     };
+}
+
+fn xpad(n: usize) usize {
+    return @bitCast(usize, (-%@bitCast(isize, n)) & 3);
 }
