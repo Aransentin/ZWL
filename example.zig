@@ -15,8 +15,11 @@ pub fn main() !void {
     var window = try platform.createWindow(.{ .title = "Hello ZWL", .width = 1024, .height = 512, .resizeable = false, .track_damage = true, .backing_store = true, .visible = true });
     defer window.destroy();
 
-    while (true) {
-        const event = try platform.waitForEvent();
+    main_loop: while (true) {
+        const event = platform.waitForEvent() catch |err| switch(err) {
+             error.ConnectionClosed => break :main_loop,
+             else => |e| return e,
+        };
         defer platform.freeEvent(event);
 
         switch (event) {

@@ -16,7 +16,7 @@ pub fn build(b: *Builder) void {
     example_exe.single_threaded = true;
     example_exe.setTarget(target);
     example_exe.setBuildMode(mode);
-    // example_exe.linkLibC();
+    example_exe.linkLibC();
     example_exe.install();
 
     const run_cmd = example_exe.run();
