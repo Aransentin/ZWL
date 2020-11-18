@@ -454,7 +454,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 try wbuf.flush();
             }
 
-            pub fn mapPixels(self: *Window) !Parent.PixelBuffer {
+            pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
                 var platform = @ptrCast(*Self, self.parent.platform);
                 var wbuf = std.io.bufferedWriter(platform.file.writer());
                 var writer = wbuf.writer();
@@ -481,7 +481,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     self.sw.data = try platform.parent.allocator.realloc(self.sw.data, @intCast(usize, self.sw.width) * @intCast(usize, self.sw.height));
                 }
                 try wbuf.flush();
-                return Parent.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
+                return zwl.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
             }
 
             pub fn submitPixels(self: *Window) !void {

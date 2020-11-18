@@ -5,14 +5,13 @@ const Platform = zwl.Platform(.{
     .single_window = true,
     .render_software = true,
     .remote = true,
-    .platforms_enabled = .{.x11=true},
+    .platforms_enabled = .{ .x11 = true },
 });
 
 var logo: [70][200][4]u8 = undefined;
 pub const log_level = .info;
 
 pub fn main() !void {
-
     var platform = try Platform.init(std.heap.page_allocator, .{});
     defer platform.deinit();
 
@@ -47,7 +46,7 @@ pub fn main() !void {
     }
 }
 
-fn paint(pixbuf: Platform.PixelBuffer, x: u16, y: u16, w: u16, h: u16) void {
+fn paint(pixbuf: zwl.PixelBuffer, x: u16, y: u16, w: u16, h: u16) void {
     var yp: usize = 0;
     while (yp < pixbuf.height) : (yp += 1) {
         var xp: usize = 0;

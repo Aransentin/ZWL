@@ -274,12 +274,35 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 };
             }
         };
-
-        pub const PixelBuffer = struct {
-            data: [*]u32,
-            // todo: format as well
-            width: u16,
-            height: u16,
-        };
     };
+}
+
+pub const Pixel = extern struct {
+    //  TODO: Maybe make this *order* platform dependent!
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8 = 0xFF,
+};
+
+pub const PixelBuffer = struct {
+    const Self = @This();
+
+    data: [*]u32,
+            // todo: format as well
+    width: u16,
+    height: u16,
+
+    pub inline fn setPixel(self: Self, x: usize, y: usize, color: Pixel) void {
+        self.data[self.width * y + x] = @bitCast(u32, color);
+    }
+
+    pub inline fn getPixel(self: Self, x: usize, y: usize) Pixel {
+        return @bitCast(Pixel, self.data[self.width * y + x]);
+    }
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Pixel) == 4);
+    std.debug.assert(@bitSizeOf(Pixel) == 32);
 }

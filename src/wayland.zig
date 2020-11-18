@@ -78,7 +78,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 return [2]u16{ self.width, self.height };
             }
 
-            pub fn mapPixels(self: *Window) !Parent.PixelBuffer {
+            pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
                 return error.Unimplemented;
             }
 
