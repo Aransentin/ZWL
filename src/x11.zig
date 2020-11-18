@@ -509,7 +509,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
             }
 
-            pub fn getPixelBuffer(self: *Window) !Parent.PixelBuffer {
+            pub fn getPixelBuffer(self: *Window) !zwl.PixelBuffer {
 
                 // Case 1: PutPixels
                 if (self.sw.width != self.width or self.sw.height != self.height) {
@@ -520,7 +520,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 // TODO: MIT-SHM
 
-                return Parent.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
+                return zwl.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
             }
 
             pub fn commitPixelBuffer(self: *Window) !void {
