@@ -13,12 +13,14 @@ pub fn getCookie(path: ?[]const u8) ![16]u8 {
                 break :blk try std.fs.openFileAbsolute(xafn, .{ .read = true, .write = false });
             }
             const home = std.os.getenv("HOME") orelse return error.HomeDirectoryNotFound;
-            var fnbuf: [256]u8 = undefined;
-            const fname = try std.fmt.bufPrint(fnbuf[0..], "{}/.Xauthority", .{home});
-            break :blk try std.fs.openFileAbsolute(fname, .{ .read = true, .write = false });
+            var membuf: [256]u8 = undefined;
+            var allocator = std.heap.FixedBufferAllocator.init(&membuf);
+            const fpath = try std.mem.joinZ(&allocator.allocator, "/", &[_][]const u8{ home, ".Xauthority" });
+            break :blk try std.fs.openFileAbsoluteZ(fpath, .{ .read = true, .write = false });
         }
     };
     defer xauth_file.close();
+
     var rbuf = std.io.bufferedReader(xauth_file.reader());
     var reader = rbuf.reader();
 

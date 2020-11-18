@@ -353,6 +353,14 @@ pub const ChangeProperty = extern struct {
     length: u32,
 };
 
+pub const DeleteProperty = extern struct {
+    request_type: u8 = 19,
+    pad0: u8 = 0,
+    request_length: u16 = 3,
+    window: u32,
+    property: u32,
+};
+
 pub const SizeHints = extern struct {
     flags: u32 = 0,
     pad0: [4]u32 = [_]u32{0} ** 4,
@@ -363,6 +371,31 @@ pub const SizeHints = extern struct {
     aspect_max: [2]u32 = [2]u32{ 0, 0 },
     base: [2]u32 = [2]u32{ 0, 0 },
     win_gravity: u32 = 0,
+};
+
+pub const MotifHints = extern struct {
+    flags: u32,
+    functions: u32,
+    decorations: u32,
+    input_mode: i32,
+    status: u32,
+};
+
+pub const CreatePixmap = extern struct {
+    request_type: u8 = 53,
+    depth: u8,
+    request_length: u16 = 4,
+    pid: PIXMAP,
+    drawable: DRAWABLE,
+    width: u16,
+    height: u16,
+};
+
+pub const FreePixmap = extern struct {
+    request_type: u8 = 54,
+    pad0: u8 = 0,
+    request_length: u16 = 2,
+    pixmap: u32,
 };
 
 pub const CreateGC = extern struct {
@@ -379,6 +412,21 @@ pub const FreeGC = extern struct {
     unsued: u8 = 0,
     request_length: u16 = 2,
     gc: GCONTEXT,
+};
+
+pub const CopyArea = extern struct {
+    request_type: u8 = 62,
+    pad0: u8 = 0,
+    request_length: u16 = 7,
+    src_drawable: DRAWABLE,
+    dst_drawable: DRAWABLE,
+    gc: GCONTEXT,
+    src_x: u16,
+    src_y: u16,
+    dst_x: u16,
+    dst_y: u16,
+    width: u16,
+    height: u16,
 };
 
 pub const PutImage = extern struct {
@@ -400,7 +448,7 @@ pub const PutImageBig = extern struct {
     format: u8 = 2,
     request_length_tag: u16 = 0,
     request_length: u32,
-    drawable: u32,
+    drawable: DRAWABLE,
     gc: u32,
     width: u16,
     height: u16,
@@ -408,6 +456,23 @@ pub const PutImageBig = extern struct {
     left_pad: u8 = 0,
     depth: u8 = 24,
     pad0: [2]u8 = [2]u8{ 0, 0 },
+};
+
+pub const InternAtom = extern struct {
+    request_type: u8 = 16,
+    if_exists: u8,
+    request_length: u16,
+    name_length: u16,
+    pad0: u16 = 0,
+};
+
+pub const InternAtomReply = extern struct {
+    reply: u8,
+    pad0: u8,
+    seqence_number: u16,
+    reply_length: u32,
+    atom: u32,
+    pad1: [20]u8,
 };
 
 // BigRequests

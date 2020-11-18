@@ -2,24 +2,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
-const way = @import("wayland.zig");
-const lwl = @import("libwayland.zig");
 const x11 = @import("x11.zig");
-const xcb = @import("xcb.zig");
-const win = @import("windows.zig");
+const wayland = @import("wayland.zig");
+const windows = @import("windows.zig");
 
 pub const PlatformType = enum {
-    Wayland,
     X11,
+    Wayland,
     Windows,
-    // planned: DRM
-    // planned: MacOS
-    // planned: Browser
 };
 
 pub const PlatformsEnabled = struct {
-    wayland: bool = if (builtin.os.tag == .linux) true else false,
     x11: bool = if (builtin.os.tag == .linux) true else false,
+    wayland: bool = if (builtin.os.tag == .linux) true else false,
     windows: bool = if (builtin.os.tag == .windows) true else false,
 };
 
@@ -44,6 +39,10 @@ pub const PlatformSettings = struct {
     render_software: bool = false,
     render_hardware: bool = false,
 
+    /// Specify if you want to be able to render to a remote server over TCP. This only works on X11 with software rendering
+    /// and has quite poor performance. Does not affect X11 on Windows as the TCP connection is the only way it works.
+    remote: bool = false,
+
     /// Specify if you'd like to use XCB instead of the native Zig X11 connection. This is chiefly
     /// useful for hardware rendering when you need to hand over the connection to other rendering APIs, e.g. Vulkan.
     x11_use_xcb: bool = false,
@@ -56,14 +55,16 @@ pub const PlatformSettings = struct {
     /// Specify if you'd like to use libwayland instead of the native Zig Wayland connection. This is chiefly
     /// useful for hardware rendering when you need to hand over the connection to other rendering APIs, e.g. Vulkan.
     wayland_use_libwayland: bool = false,
+
+    /// If you set 'hdr' to true, the pixel buffer(s) you get is in the native window/monitor colour depth,
+    /// which can have more (or fewer, technically) than 8 bits per colour.
+    /// If false, the library will always give you an 8-bit buffer and automatically convert it to
+    /// the native depth for you if needed.
+    hdr: bool = false,
 };
 
 /// Backend-specific runtime options.
 pub const PlatformOptions = struct {
-    wayland: struct {
-        // todo: stuff
-    } = .{},
-
     x11: struct {
         /// The X11 host we will connect to. 'null' here means using the DISPLAY environment variable,
         /// parsed in the same manner as XCB. Specifying "localhost" or a zero-length string will use
@@ -88,6 +89,14 @@ pub const PlatformOptions = struct {
         /// 'null' here means reading it from the XAUTHORITY environment variable.
         xauthority_location: ?[]const u8 = null,
     } = .{},
+
+    wayland: struct {
+        // todo: stuff
+    } = .{},
+
+    windows: struct {
+        // todo: stuff
+    } = .{},
 };
 
 /// The window mode. All options degrade to "Fullscreen" if not supported by the platform.
@@ -102,14 +111,9 @@ pub const WindowMode = enum {
 
     /// A normal fullscreen window.
     Fullscreen,
-
-    /// Some platforms support taking exclusive control over the screen, bypassing the entire window manager.
-    /// This is sometimes necessary to change certain monitor settings (e.g. colour depth on X11) and enables
-    /// techniques for low-latency rendering for e.g. VR displays.
-    ExclusiveFullscreen,
 };
 
-/// Options for windows, used during window creation.
+/// Options for windows
 pub const WindowOptions = struct {
     /// The title of the window. Ignored if the platform does not support it. If specifying a title is not optional
     /// for the current platform, a null title will be interpreted as an empty string.
@@ -132,137 +136,148 @@ pub const WindowOptions = struct {
     /// can be made transparent. Note that this will only work if the platform has a compositor running.
     transparent: ?bool = null,
 
-    /// If you set 'hdr' to true, the pixel buffer(s) you get is in the native window/monitor colour depth,
-    /// which can have more (or fewer, technically) than 8 bits per colour.
-    /// If false, the library will always give you an 8-bit buffer and automatically convert it to
-    /// the native depth for you if needed.
-    hdr: ?bool = null,
-
     /// This means that the event callback will notify you if any of your window is "damaged", i.e.
     /// needs to be re-rendered due to (for example) another window having covered part of it.
     /// Not needed if you're constantly re-rendering the entire window anyway.
     track_damage: ?bool = null,
-
-    /// If this is set to true, you will get a callback whenever vblank happens. This enables
-    /// rendering to the screen at the right moment to prevent tearing and similar artefacts.
-    track_vblank: ?bool = null,
-
-    /// If this is set to true, the contents of the window will be saved so that you don't have to
-    /// re-render anything after another window has obscured it. On some platforms (e.g. Wayland)
-    /// this is mandatory so this option does nothing.
-    backing_store: ?bool = null,
 };
 
 pub const EventType = enum {
     WindowResized,
-    WindowDamaged,
     WindowDestroyed,
+    WindowDamaged,
+    ApplicationTerminated,
 };
 
 pub fn Platform(comptime _settings: PlatformSettings) type {
-    return union(PlatformType) {
+    return struct {
         const Self = @This();
-        pub const settings = _settings; // So that our child platforms can see it
+        pub const settings = _settings;
+        pub const PlatformX11 = x11.Platform(Self);
+        pub const PlatformWayland = wayland.Platform(Self);
+        pub const PlatformWindows = windows.Platform(Self);
 
-        const PlatformWay = if (settings.wayland_use_libwayland) lwl.Platform(Self) else way.Platform(Self);
-        const PlatformX11 = if (settings.x11_use_xcb) xcb.Platform(Self) else x11.Platform(Self);
-        const PlatformWin = win.Platform(Self);
+        type: PlatformType,
+        allocator: *Allocator,
+        window: if (settings.single_window) ?*Window else void,
+        windows: if (settings.single_window) void else []*Window,
 
-        Wayland: if (settings.platforms_enabled.wayland) *PlatformWay else void,
-        X11: if (settings.platforms_enabled.x11) *PlatformX11 else void,
-        Windows: if (settings.platforms_enabled.windows) *PlatformWin else void,
-
-        pub fn init(allocator: *Allocator, options: PlatformOptions) !Self {
+        pub fn init(allocator: *Allocator, options: PlatformOptions) !*Self {
             if (settings.platforms_enabled.wayland) blk: {
                 return PlatformWayland.init(allocator, options) catch break :blk;
             }
             if (settings.platforms_enabled.x11) blk: {
                 return PlatformX11.init(allocator, options) catch break :blk;
             }
-            if (settings.platforms_enabled.windows) blk: {
-                return PlatformWindows.init(allocator, options) catch break :blk;
+            if (settings.platforms_enabled.windows) {
+                return PlatformWindows.init(allocator, options) catch |err| {
+                    return err;
+                    // break :blk;
+                };
             }
+
             return error.NoPlatformAvailable;
         }
 
-        pub fn deinit(self: Self) void {
-            switch (self) {
-                .Wayland => |native| if (settings.platforms_enabled.wayland) native.deinit() else unreachable,
-                .X11 => |native| if (settings.platforms_enabled.x11) native.deinit() else unreachable,
-                .Windows => |native| if (settings.platforms_enabled.windows) native.deinit() else unreachable,
+        pub fn deinit(self: *Self) void {
+            switch (self.type) {
+                .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.deinit(@ptrCast(*PlatformX11, self)),
+                .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.deinit(@ptrCast(*PlatformWayland, self)),
+                .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.deinit(@ptrCast(*PlatformWindows, self)),
             }
         }
 
-        pub fn waitForEvent(self: Self) !Event {
-            return switch (self) {
-                .Wayland => |native| if (settings.platforms_enabled.wayland) native.waitForEvent() else unreachable,
-                .X11 => |native| if (settings.platforms_enabled.x11) native.waitForEvent() else unreachable,
-                .Windows => |native| if (settings.platforms_enabled.windows) native.waitForEvent() else unreachable,
+        pub fn waitForEvent(self: *Self) anyerror!Event {
+            return switch (self.type) {
+                .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.waitForEvent(@ptrCast(*PlatformX11, self)),
+                .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.waitForEvent(@ptrCast(*PlatformWayland, self)),
+                .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.waitForEvent(@ptrCast(*PlatformWindows, self)),
             };
         }
 
-        pub fn freeEvent(self: Self, event: Event) void {
-            switch (self) {
-                .Wayland => |native| if (settings.platforms_enabled.wayland) native.freeEvent(event) else unreachable,
-                .X11 => |native| if (settings.platforms_enabled.x11) native.freeEvent(event) else unreachable,
-                .Windows => |native| if (settings.platforms_enabled.windows) native.freeEvent(event) else unreachable,
+        pub fn createWindow(self: *Self, options: WindowOptions) anyerror!*Window {
+            const window = try switch (self.type) {
+                .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.createWindow(@ptrCast(*PlatformX11, self), options),
+                .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.createWindow(@ptrCast(*PlatformWayland, self), options),
+                .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.createWindow(@ptrCast(*PlatformWindows, self), options),
+            };
+            errdefer window.deinit();
+
+            if (settings.single_window) {
+                self.window = window;
+            } else {
+                self.windows = try self.allocator.realloc(self.windows, self.windows.len + 1);
+                self.windows[self.windows.len - 1] = window;
             }
-        }
-
-        pub fn createWindow(self: Self, options: WindowOptions) !Window {
-            return try switch (self) {
-                .Wayland => |native| if (settings.platforms_enabled.wayland) native.createWindow(options) else unreachable,
-                .X11 => |native| if (settings.platforms_enabled.x11) native.createWindow(options) else unreachable,
-                .Windows => |native| if (settings.platforms_enabled.windows) native.createWindow(options) else unreachable,
-            };
+            return window;
         }
 
         pub const Event = union(EventType) {
-            WindowResized: Window,
-            WindowDamaged: struct { window: Window, x: u16, y: u16, w: u16, h: u16 },
-            WindowDestroyed: Window,
+            WindowResized: *Window,
+            WindowDestroyed: *Window,
+            WindowDamaged: struct { window: *Window, x: u16, y: u16, w: u16, h: u16 },
+            ApplicationTerminated: void,
         };
 
-        pub const Window = union(PlatformType) {
-            Wayland: if (settings.platforms_enabled.wayland) *PlatformWayland.Window else void,
-            X11: if (settings.platforms_enabled.x11) *PlatformX11.Window else void,
-            Windows: if (settings.platforms_enabled.windows) *PlatformWindows.Window else void,
+        pub const Window = struct {
+            platform: *Self,
 
-            pub fn destroy(self: Window) void {
-                switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) native.destroy() else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) native.destroy() else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) native.destroy() else unreachable,
+            pub fn deinit(self: *Window) void {
+                if (settings.single_window) {
+                    self.platform.window = null;
+                } else {
+                    for (self.platform.windows) |*w, i| {
+                        if (w.* == self) {
+                            w.* = self.platform.windows[self.platform.windows.len - 1];
+                            break;
+                        }
+                    }
+                    self.platform.windows = self.platform.allocator.realloc(self.platform.windows, self.platform.windows.len - 1) catch unreachable;
                 }
-            }
 
-            pub fn getSize(self: Window) [2]u16 {
-                return switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) TODO else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) [2]u16{ native.width, native.height } else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) TODO else unreachable,
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.deinit(@ptrCast(*PlatformX11.Window, self)),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.deinit(@ptrCast(*PlatformWayland.Window, self)),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.deinit(@ptrCast(*PlatformWindows.Window, self)),
                 };
             }
 
-            pub fn getPixelBuffer(self: Window) !PixelBuffer {
-                return try switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) TODO else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) native.getPixelBuffer() else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) TODO else unreachable,
+            pub fn configure(self: *Window, options: WindowOptions) !void {
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.configure(@ptrCast(*PlatformX11.Window, self), options),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.configure(@ptrCast(*PlatformWayland.Window, self), options),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.configure(@ptrCast(*PlatformWindows.Window, self), options),
                 };
             }
 
-            pub fn commitPixelBuffer(self: Window) !void {
-                return switch (self) {
-                    .Wayland => |native| if (settings.platforms_enabled.wayland) TODO else unreachable,
-                    .X11 => |native| if (settings.platforms_enabled.x11) native.commitPixelBuffer() else unreachable,
-                    .Windows => |native| if (settings.platforms_enabled.windows) TODO else unreachable,
+            pub fn getSize(self: *Window) [2]u16 {
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.getSize(@ptrCast(*PlatformX11.Window, self)),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.getSize(@ptrCast(*PlatformWayland.Window, self)),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.getSize(@ptrCast(*PlatformWindows.Window, self)),
+                };
+            }
+
+            pub fn mapPixels(self: *Window) anyerror!PixelBuffer {
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.mapPixels(@ptrCast(*PlatformX11.Window, self)),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.mapPixels(@ptrCast(*PlatformWayland.Window, self)),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.mapPixels(@ptrCast(*PlatformWindows.Window, self)),
+                };
+            }
+
+            pub fn submitPixels(self: *Window) !void {
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.submitPixels(@ptrCast(*PlatformX11.Window, self)),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.submitPixels(@ptrCast(*PlatformWayland.Window, self)),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.submitPixels(@ptrCast(*PlatformWindows.Window, self)),
                 };
             }
         };
 
         pub const PixelBuffer = struct {
             data: [*]u32,
+            // todo: format as well
             width: u16,
             height: u16,
         };
