@@ -279,9 +279,9 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
 
 pub const Pixel = extern struct {
     //  TODO: Maybe make this *order* platform dependent!
-    r: u8,
-    g: u8,
     b: u8,
+    g: u8,
+    r: u8,
     a: u8 = 0xFF,
 };
 
@@ -299,6 +299,10 @@ pub const PixelBuffer = struct {
 
     pub inline fn getPixel(self: Self, x: usize, y: usize) Pixel {
         return @bitCast(Pixel, self.data[self.width * y + x]);
+    }
+
+    pub fn span(self: Self) []u32 {
+        return self.data[0 .. @as(usize, self.width) * @as(usize, self.height)];
     }
 };
 
