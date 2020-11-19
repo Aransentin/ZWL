@@ -289,7 +289,7 @@ pub const PixelBuffer = struct {
     const Self = @This();
 
     data: [*]u32,
-            // todo: format as well
+    // todo: format as well
     width: u16,
     height: u16,
 

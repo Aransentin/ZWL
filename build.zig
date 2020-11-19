@@ -8,7 +8,6 @@ pub fn build(b: *Builder) void {
     const softlogo = b.addExecutable("softlogo", "examples/softlogo.zig");
     softlogo.addPackagePath("zwl", "src/zwl.zig");
     softlogo.single_threaded = true;
-    softlogo.strip = true;
     softlogo.subsystem = .Windows;
     softlogo.setTarget(target);
     softlogo.setBuildMode(mode);

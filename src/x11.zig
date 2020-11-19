@@ -12,6 +12,7 @@ const ReplyCBuffer = struct {
     const ReplyHandler = enum {
         ExtensionQueryBigRequests,
         BigRequestsEnable,
+        ExtensionQueryXKB,
         AtomMotifWmHints,
     };
 
@@ -83,6 +84,10 @@ pub fn Platform(comptime Parent: anytype) type {
         // Atoms
         atom_motif_wm_hints: u32 = 0,
 
+        // Extension info
+        xkb_opcode_major: u8 = 0,
+        xkb_first_event: u8 = 0,
+
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
             if (builtin.os.tag == .windows) {
                 _ = try std.os.windows.WSAStartup(2, 2);
@@ -144,6 +149,11 @@ pub fn Platform(comptime Parent: anytype) type {
             try writer.writeAll("BIG-REQUESTS");
             try self.replies.push(.ExtensionQueryBigRequests);
 
+            try writer.writeAll(std.mem.asBytes(&QueryExtensionRequest{ .length_request = 5, .length_name = 9 }));
+            try writer.writeAll("XKEYBOARD");
+            try writer.writeByteNTimes(0, xpad("XKEYBOARD".len));
+            try self.replies.push(.ExtensionQueryXKB);
+
             // Get atoms
             try writer.writeAll(std.mem.asBytes(&InternAtom{
                 .if_exists = 0,
@@ -193,6 +203,15 @@ pub fn Platform(comptime Parent: anytype) type {
                     .BigRequestsEnable => {
                         const qreply = @ptrCast(*const BigReqEnableReply, &evdata);
                         self.max_req_len = qreply.max_req_len;
+                    },
+                    .ExtensionQueryXKB => {
+                        const qreply = @ptrCast(*const QueryExtensionReply, &evdata);
+                        if (qreply.present != 0) {
+                            self.xkb_first_event = qreply.major_opcode;
+                            self.xkb_opcode_major = qreply.first_event;
+
+                            // UseExtension
+                        }
                     },
                     .AtomMotifWmHints => {
                         const qreply = @ptrCast(*const InternAtomReply, &evdata);
