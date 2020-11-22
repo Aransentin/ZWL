@@ -82,7 +82,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 return error.Unimplemented;
             }
 
-            pub fn submitPixels(self: *Window) !void {
+            pub fn submitPixels(self: *Window, pdates: []const zwl.UpdateArea) !void {
                 return error.Unimplemented;
             }
         };

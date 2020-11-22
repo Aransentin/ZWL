@@ -266,11 +266,11 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 };
             }
 
-            pub fn submitPixels(self: *Window) !void {
+            pub fn submitPixels(self: *Window, updates: []const UpdateArea) !void {
                 return switch (self.platform.type) {
-                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.submitPixels(@ptrCast(*PlatformX11.Window, self)),
-                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.submitPixels(@ptrCast(*PlatformWayland.Window, self)),
-                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.submitPixels(@ptrCast(*PlatformWindows.Window, self)),
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.submitPixels(@ptrCast(*PlatformX11.Window, self), updates),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.submitPixels(@ptrCast(*PlatformWayland.Window, self), updates),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.submitPixels(@ptrCast(*PlatformWindows.Window, self), updates),
                 };
             }
         };
@@ -283,6 +283,13 @@ pub const Pixel = extern struct {
     g: u8,
     r: u8,
     a: u8 = 0xFF,
+};
+
+pub const UpdateArea = struct {
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
 };
 
 pub const PixelBuffer = struct {

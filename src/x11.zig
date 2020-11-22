@@ -279,6 +279,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     @enumToInt(XEventCode.Expose) => {
                         const ev = @ptrCast(*const Expose, @alignCast(4, evdata.ptr));
                         if (self.getWindowById(ev.window)) |window| {
+                            // TODO: Not greater than underlying buffer...?
                             return Parent.Event{
                                 .WindowDamaged = .{
                                     .window = @ptrCast(*Parent.Window, window),
@@ -503,39 +504,70 @@ pub fn Platform(comptime Parent: anytype) type {
                 return zwl.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
             }
 
-            pub fn submitPixels(self: *Window) !void {
+            pub fn submitPixels(self: *Window, updates: []const zwl.UpdateArea) !void {
                 var platform = @ptrCast(*Self, self.parent.platform);
                 var wbuf = std.io.bufferedWriter(platform.file.writer());
                 var writer = wbuf.writer();
 
                 // If no MIT-SHM, send pixels manually
-                {
-                    const put_image = PutImageBig{
-                        .request_length = 7 + @intCast(u32, self.sw.data.len),
-                        .drawable = .{ .window = self.handle },
-                        .gc = self.sw.gc,
-                        .width = self.sw.width,
-                        .height = self.sw.height,
-                        .dst = [2]u16{ 0, 0 },
-                        .left_pad = 0,
-                        .depth = 24,
-                    };
-                    try writer.writeAll(std.mem.asBytes(&put_image));
-                    try writer.writeAll(std.mem.sliceAsBytes(self.sw.data));
+                for (updates) |update| {
+                    // If the width is equal to the buffer width, we can send more in one go
+                    if (update.w == self.sw.width) {
+                        if (update.x != 0) unreachable;
+                        const pixels_n = @as(u32, self.sw.width) * @as(u32, update.h);
+                        const pixels_offset = @as(u32, update.w) * @as(u32, update.y);
+
+                        const put_image = PutImageBig{
+                            .request_length = 7 + pixels_n,
+                            .drawable = .{ .pixmap = self.sw.pixmap },
+                            .gc = self.sw.gc,
+                            .width = update.w,
+                            .height = update.h,
+                            .dst = [2]u16{ update.x, update.y },
+                            .left_pad = 0,
+                            .depth = 24,
+                        };
+                        try writer.writeAll(std.mem.asBytes(&put_image));
+                        try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[pixels_offset .. pixels_offset + pixels_n]));
+                    } else {
+                        var ri: u16 = 0;
+                        while (ri < update.h) : (ri += 1) {
+                            const pixels_n = @as(u32, update.w);
+                            const pixels_offset = @as(u32, self.sw.width) * @as(u32, update.y + ri) + @as(u32, update.x);
+
+                            const put_image = PutImageBig{
+                                .request_length = 7 + pixels_n,
+                                .drawable = .{ .pixmap = self.sw.pixmap },
+                                .gc = self.sw.gc,
+                                .width = update.w,
+                                .height = 1,
+                                .dst = [2]u16{ update.x, update.y + ri },
+                                .left_pad = 0,
+                                .depth = 24,
+                            };
+                            try writer.writeAll(std.mem.asBytes(&put_image));
+                            try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[pixels_offset .. pixels_offset + pixels_n]));
+                        }
+                    }
                 }
 
-                const copy_area = CopyArea{
-                    .src_drawable = .{ .pixmap = self.sw.pixmap },
-                    .dst_drawable = .{ .window = self.handle },
-                    .gc = self.sw.gc,
-                    .src_x = 0,
-                    .src_y = 0,
-                    .dst_x = 0,
-                    .dst_y = 0,
-                    .width = self.sw.width,
-                    .height = self.sw.height,
-                };
-                //try writer.writeAll(std.mem.asBytes(&copy_area));
+                // TODO: MIT-SHM here
+
+                // Commit the changes
+                for (updates) |update| {
+                    const copy_area = CopyArea{
+                        .src_drawable = .{ .pixmap = self.sw.pixmap },
+                        .dst_drawable = .{ .window = self.handle },
+                        .gc = self.sw.gc,
+                        .src_x = update.x,
+                        .src_y = update.y,
+                        .dst_x = update.x,
+                        .dst_y = update.y,
+                        .width = update.w,
+                        .height = update.h,
+                    };
+                    try writer.writeAll(std.mem.asBytes(&copy_area));
+                }
 
                 try wbuf.flush();
             }

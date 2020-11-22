@@ -5,7 +5,7 @@ const Platform = zwl.Platform(.{
     .single_window = true,
     .render_software = true,
     .remote = true,
-    .platforms_enabled = .{ .x11 = true },
+    .platforms_enabled = .{},
 });
 
 var logo: [70][200][4]u8 = undefined;
@@ -29,7 +29,8 @@ pub fn main() !void {
 
                 var pixbuf = try damage.window.mapPixels();
                 paint(pixbuf, damage.x, damage.y, damage.w, damage.h);
-                try damage.window.submitPixels();
+                const updates = [_]zwl.UpdateArea{.{ .x = damage.x, .y = damage.y, .w = damage.w, .h = damage.h }};
+                try damage.window.submitPixels(&updates);
             },
             .WindowResized => |win| {
                 const size = win.getSize();
@@ -47,6 +48,11 @@ pub fn main() !void {
 }
 
 fn paint(pixbuf: zwl.PixelBuffer, x: u16, y: u16, w: u16, h: u16) void {
+    var seed_bytes: [@sizeOf(u64)]u8 = undefined;
+    std.crypto.randomBytes(seed_bytes[0..]) catch unreachable;
+    var rng = std.rand.DefaultPrng.init(std.mem.readIntNative(u64, &seed_bytes));
+    const background = [4]u8{ @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, 0 };
+
     var yp: usize = 0;
     while (yp < pixbuf.height) : (yp += 1) {
         var xp: usize = 0;
@@ -54,12 +60,10 @@ fn paint(pixbuf: zwl.PixelBuffer, x: u16, y: u16, w: u16, h: u16) void {
             if (xp < x or xp > x + w) continue;
             if (yp < y or yp > y + h) continue;
 
-            const background = [4]u8{ 255, 255, 255, 0 };
             const mid = [2]i32{ pixbuf.width >> 1, pixbuf.height >> 1 };
             if (xp < mid[0] - 100 or xp >= mid[0] + 100 or yp < mid[1] - 35 or yp >= mid[1] + 35) {
                 pixbuf.data[yp * pixbuf.width + xp] = @bitCast(u32, background);
             } else {
-                // std.debug.print("{}, {}\n", .{ yp, mid[1] });
                 const tx = @intCast(usize, @intCast(isize, xp) - (mid[0] - 100));
                 const ty = @intCast(usize, @intCast(isize, yp) - (mid[1] - 35));
                 const pix = logo[ty][tx];
