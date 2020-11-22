@@ -13,18 +13,19 @@ const ReplyCBuffer = struct {
         ExtensionQueryBigRequests,
         BigRequestsEnable,
         ExtensionQueryXKB,
+        ExtensionQueryMitShm,
         AtomMotifWmHints,
     };
 
     const ReplyEvent = struct {
-        seq: u16,
+        seq: u32,
         handler: ReplyHandler,
     };
 
     mem: [32]ReplyEvent = undefined,
     tail: u8 = 0,
     head: u8 = 0,
-    seq_next: u16 = 1,
+    seq_next: u32 = 1,
 
     pub fn len(self: *ReplyCBuffer) usize {
         var hp: usize = self.head;
@@ -44,7 +45,7 @@ const ReplyCBuffer = struct {
         self.seq_next += 1;
     }
 
-    pub fn get(self: *ReplyCBuffer, seq: u16) ?ReplyHandler {
+    pub fn get(self: *ReplyCBuffer, seq: u32) ?ReplyHandler {
         while (self.len() > 0) {
             const tailp = self.tail;
             const ev = self.mem[tailp];
@@ -87,6 +88,8 @@ pub fn Platform(comptime Parent: anytype) type {
         // Extension info
         xkb_opcode_major: u8 = 0,
         xkb_first_event: u8 = 0,
+        mitshm_major_opcode: u8 = 0,
+        mitshm_first_event: u8 = 0,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
             if (builtin.os.tag == .windows) {
@@ -154,6 +157,11 @@ pub fn Platform(comptime Parent: anytype) type {
             try writer.writeByteNTimes(0, xpad("XKEYBOARD".len));
             try self.replies.push(.ExtensionQueryXKB);
 
+            try writer.writeAll(std.mem.asBytes(&QueryExtensionRequest{ .length_request = 4, .length_name = 7 }));
+            try writer.writeAll("MIT-SHM");
+            try writer.writeByteNTimes(0, xpad("MIT-SHM".len));
+            try self.replies.push(.ExtensionQueryMitShm);
+
             // Get atoms
             try writer.writeAll(std.mem.asBytes(&InternAtom{
                 .if_exists = 0,
@@ -209,8 +217,14 @@ pub fn Platform(comptime Parent: anytype) type {
                         if (qreply.present != 0) {
                             self.xkb_first_event = qreply.major_opcode;
                             self.xkb_opcode_major = qreply.first_event;
-
                             // UseExtension
+                        }
+                    },
+                    .ExtensionQueryMitShm => {
+                        const qreply = @ptrCast(*const QueryExtensionReply, &evdata);
+                        if (qreply.present != 0) {
+                            self.mitshm_major_opcode = qreply.major_opcode;
+                            self.mitshm_first_event = qreply.first_event;
                         }
                     },
                     .AtomMotifWmHints => {
@@ -273,7 +287,7 @@ pub fn Platform(comptime Parent: anytype) type {
                         const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
                         if (extlen > 0) unreachable; // Can't handle this yet
                     },
-                    @enumToInt(XEventCode.ReparentNotify), @enumToInt(XEventCode.MapNotify), @enumToInt(XEventCode.UnmapNotify) => {
+                    @enumToInt(XEventCode.ReparentNotify), @enumToInt(XEventCode.MapNotify), @enumToInt(XEventCode.UnmapNotify), @enumToInt(XEventCode.NoExposure) => {
                         // Whatever
                     },
                     @enumToInt(XEventCode.Expose) => {
@@ -497,7 +511,8 @@ pub fn Platform(comptime Parent: anytype) type {
                     try writer.writeAll(std.mem.asBytes(&create_pixmap));
                     platform.replies.ignoreEvent();
 
-                    // Todo: MIT-SHM too
+                    // Todo: MIT-SHM
+
                     self.sw.data = try platform.parent.allocator.realloc(self.sw.data, @intCast(usize, self.sw.width) * @intCast(usize, self.sw.height));
                 }
                 try wbuf.flush();
@@ -511,47 +526,34 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 // If no MIT-SHM, send pixels manually
                 for (updates) |update| {
-                    // If the width is equal to the buffer width, we can send more in one go
-                    if (update.w == self.sw.width) {
-                        if (update.x != 0) unreachable;
-                        const pixels_n = @as(u32, self.sw.width) * @as(u32, update.h);
-                        const pixels_offset = @as(u32, update.w) * @as(u32, update.y);
+                    const pixels_n = @as(u32, update.w) * @as(u32, update.h);
+                    const put_image = PutImageBig{
+                        .request_length = 7 + pixels_n,
+                        .drawable = .{ .pixmap = self.sw.pixmap },
+                        .gc = self.sw.gc,
+                        .width = update.w,
+                        .height = update.h,
+                        .dst = [2]u16{ update.x, update.y },
+                        .left_pad = 0,
+                        .depth = 24,
+                    };
+                    try writer.writeAll(std.mem.asBytes(&put_image));
 
-                        const put_image = PutImageBig{
-                            .request_length = 7 + pixels_n,
-                            .drawable = .{ .pixmap = self.sw.pixmap },
-                            .gc = self.sw.gc,
-                            .width = update.w,
-                            .height = update.h,
-                            .dst = [2]u16{ update.x, update.y },
-                            .left_pad = 0,
-                            .depth = 24,
-                        };
-                        try writer.writeAll(std.mem.asBytes(&put_image));
-                        try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[pixels_offset .. pixels_offset + pixels_n]));
+                    if (update.w == self.sw.width) {
+                        const offset = @as(u32, update.w) * @as(u32, update.y);
+                        try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[offset .. offset + pixels_n]));
                     } else {
                         var ri: u16 = 0;
                         while (ri < update.h) : (ri += 1) {
-                            const pixels_n = @as(u32, update.w);
-                            const pixels_offset = @as(u32, self.sw.width) * @as(u32, update.y + ri) + @as(u32, update.x);
-
-                            const put_image = PutImageBig{
-                                .request_length = 7 + pixels_n,
-                                .drawable = .{ .pixmap = self.sw.pixmap },
-                                .gc = self.sw.gc,
-                                .width = update.w,
-                                .height = 1,
-                                .dst = [2]u16{ update.x, update.y + ri },
-                                .left_pad = 0,
-                                .depth = 24,
-                            };
-                            try writer.writeAll(std.mem.asBytes(&put_image));
-                            try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[pixels_offset .. pixels_offset + pixels_n]));
+                            const row_pixels_n = @as(u32, update.w);
+                            const row_pixels_offset = (@as(u32, self.sw.width) * @as(u32, update.y + ri)) + @as(u32, update.x);
+                            try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[row_pixels_offset .. row_pixels_offset + row_pixels_n]));
                         }
                     }
+                    platform.replies.ignoreEvent();
                 }
 
-                // TODO: MIT-SHM here
+                // TODO: MIT-SHM
 
                 // Commit the changes
                 for (updates) |update| {

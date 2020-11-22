@@ -169,11 +169,8 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             if (settings.platforms_enabled.x11) blk: {
                 return PlatformX11.init(allocator, options) catch break :blk;
             }
-            if (settings.platforms_enabled.windows) {
-                return PlatformWindows.init(allocator, options) catch |err| {
-                    return err;
-                    // break :blk;
-                };
+            if (settings.platforms_enabled.windows) blk: {
+                return PlatformWindows.init(allocator, options) catch break :blk;
             }
 
             return error.NoPlatformAvailable;

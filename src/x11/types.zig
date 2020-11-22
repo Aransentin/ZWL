@@ -433,7 +433,7 @@ pub const PutImage = extern struct {
     request_type: u8 = 72,
     format: u8 = 2,
     request_length: u16,
-    drawable: u32,
+    drawable: DRAWABLE,
     gc: u32,
     width: u16,
     height: u16,
