@@ -24,31 +24,16 @@ pub fn getCookie(path: ?[]const u8) ![16]u8 {
     var rbuf = std.io.bufferedReader(xauth_file.reader());
     var reader = rbuf.reader();
 
-    var namebuf: [std.os.HOST_NAME_MAX]u8 = undefined;
-    const hostname = if (builtin.os.tag == .linux) std.os.gethostname(&namebuf) catch null else null;
-    var best_quality: u8 = 0;
-    var xauth_data: [16]u8 = undefined;
-
     while (true) {
         const family = reader.readIntBig(u16) catch break;
 
-        var quality: u8 = 1;
-
         const addr_len = try reader.readIntBig(u16);
-        if (addr_len > std.os.HOST_NAME_MAX) {
-            try reader.skipBytes(addr_len, .{ .buf_size = 64 });
-        } else if (hostname) |host| {
-            var addr: [std.os.HOST_NAME_MAX]u8 = undefined;
-            _ = try reader.readAll(addr[0..addr_len]);
-            if (std.mem.eql(u8, addr[0..addr_len], host)) {
-                quality += 1;
-            }
-        }
+        try reader.skipBytes(addr_len, .{ .buf_size = 64 });
 
         const num_len = try reader.readIntBig(u16);
         try reader.skipBytes(num_len, .{ .buf_size = 64 });
-        const name_len = try reader.readIntBig(u16);
 
+        const name_len = try reader.readIntBig(u16);
         if (name_len != 18) {
             try reader.skipBytes(name_len, .{ .buf_size = 64 });
             const data_len = try reader.readIntBig(u16);
@@ -67,14 +52,9 @@ pub fn getCookie(path: ?[]const u8) ![16]u8 {
         const data_len = try reader.readIntBig(u16);
         if (data_len != 16) break;
 
-        if (quality > best_quality) {
-            best_quality = quality;
-            _ = try reader.readAll(xauth_data[0..]);
-        } else {
-            try reader.skipBytes(xauth_data.len, .{ .buf_size = 64 });
-        }
+        var xauth_data: [16]u8 = undefined;
+        _ = try reader.readAll(xauth_data[0..]);
+        return xauth_data;
     }
-
-    if (best_quality > 0) return xauth_data;
     return error.XauthorityCookieNotFound;
 }
