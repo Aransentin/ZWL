@@ -3,6 +3,10 @@ const builtin = @import("builtin");
 pub const WINDOW = u32;
 pub const PIXMAP = u32;
 pub const GCONTEXT = u32;
+pub const REGION = u32;
+pub const CRTC = u32;
+pub const SyncFence = u32;
+pub const EventID = u32;
 pub const DRAWABLE = extern union {
     window: WINDOW,
     pixmap: PIXMAP,
@@ -169,6 +173,7 @@ pub const XEventCode = extern enum(u8) {
     ColormapNotify = 32,
     ClientMessage = 33,
     MappingNotify = 34,
+    GenericEvent = 35,
 };
 
 pub const XErrorCode = extern enum(u8) {
@@ -189,6 +194,7 @@ pub const XErrorCode = extern enum(u8) {
     Name = 15,
     Length = 16,
     Implementation = 17,
+    _,
 };
 
 pub const XEventError = extern struct {
@@ -552,4 +558,124 @@ pub const ModeInfo = extern struct {
     vtotal: u16,
     name_len: u16,
     flags: u32,
+};
+
+// XFixes
+
+pub const XFixesQueryVersion = extern struct {
+    opcode: u8,
+    minor: u8 = 0,
+    length_request: u16 = 3,
+    version_major: u32,
+    version_minor: u32,
+};
+
+pub const XFixesQueryVersionReply = extern struct {
+    opcode: u8,
+    pad0: u8,
+    seqence_number: u16,
+    reply_length: u32,
+    version_major: u32,
+    version_minor: u32,
+};
+
+pub const CreateRegion = extern struct {
+    opcode: u8,
+    minor: u8 = 5,
+    length_request: u16,
+    region: REGION,
+};
+
+pub const DestroyRegion = extern struct {
+    opcode: u8,
+    minor: u8 = 10,
+    length_request: u16 = 2,
+    region: REGION,
+};
+
+pub const SetRegion = extern struct {
+    opcode: u8,
+    minor: u8 = 11,
+    length_request: u16,
+    region: REGION,
+};
+
+// Present
+
+pub const PresentQueryVersion = extern struct {
+    opcode: u8,
+    minor: u8 = 0,
+    length_request: u16 = 3,
+    version_major: u32,
+    version_minor: u32,
+};
+
+pub const PresentPixmap = extern struct {
+    opcode: u8,
+    minor: u8 = 1,
+    length: u16 = 18,
+    window: WINDOW,
+    pixmap: PIXMAP,
+    serial: u32,
+    valid_area: REGION,
+    update_area: REGION,
+    offset_x: i16 = 0,
+    offset_y: i16 = 0,
+    crtc: CRTC,
+    wait_fence: SyncFence,
+    idle_fence: SyncFence,
+    options: u32,
+    unused: u32 = 0,
+    target_msc: u64,
+    divisor: u64,
+    remainder: u64,
+};
+
+pub const PresentNotify = extern struct {
+    window: WINDOW,
+    serial: u32,
+};
+
+pub const PresentSelectInput = extern struct {
+    opcode: u8,
+    minor: u8 = 3,
+    length: u16 = 4,
+    event_id: EventID,
+    window: WINDOW,
+    mask: u32,
+};
+
+pub const PresentCompleteNotify = extern struct {
+    type: u8 = 35,
+    extension: u8,
+    seqnum: u16,
+    length: u32,
+    evtype: u16 = 1,
+    kind: u8,
+    mode: u8,
+    event_id: u32,
+    window: u32,
+    serial: u32,
+    ust: u64,
+    msc: u64,
+};
+
+// MIT-SHM
+
+pub const MitShmQueryVersion = extern struct {
+    opcode: u8,
+    minor: u8 = 0,
+    length_request: u16 = 1,
+};
+
+// Generic Event
+
+pub const GenericEvent = extern struct {
+    type: u8 = 35,
+    extension: u8,
+    seqnum: u16,
+    length: u32,
+    evtype: u16,
+    pad0: u16,
+    pad1: [5]u32,
 };

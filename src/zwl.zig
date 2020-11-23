@@ -146,6 +146,7 @@ pub const EventType = enum {
     WindowResized,
     WindowDestroyed,
     WindowDamaged,
+    WindowVBlank,
     ApplicationTerminated,
 };
 
@@ -213,6 +214,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             WindowResized: *Window,
             WindowDestroyed: *Window,
             WindowDamaged: struct { window: *Window, x: u16, y: u16, w: u16, h: u16 },
+            WindowVBlank: *Window,
             ApplicationTerminated: void,
         };
 
