@@ -22,6 +22,7 @@ pub const VISUALTYPE = extern enum(u8) {
     DirectColor = 5,
 };
 pub const COLORMAP = u32;
+pub const KEYCODE = u8;
 
 pub const BuiltinAtom = enum(u32) {
     PRIMARY = 1,
@@ -174,6 +175,7 @@ pub const XEventCode = extern enum(u8) {
     ClientMessage = 33,
     MappingNotify = 34,
     GenericEvent = 35,
+    _,
 };
 
 pub const XErrorCode = extern enum(u8) {
@@ -678,4 +680,23 @@ pub const GenericEvent = extern struct {
     evtype: u16,
     pad0: u16,
     pad1: [5]u32,
+};
+
+/// Event generated when a key/button is pressed/released
+/// or when the input device moves
+pub const InputDeviceEvent = extern struct {
+    type: u8,
+    detail: KEYCODE,
+    sequence: u16,
+    time: u32,
+    root: WINDOW,
+    event: WINDOW,
+    child: WINDOW,
+    root_x: i16,
+    root_y: i16,
+    event_x: i16,
+    event_y: i16,
+    state: u16,
+    same_screen: u8,
+    pad: u8,
 };
