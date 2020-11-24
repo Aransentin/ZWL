@@ -140,6 +140,12 @@ pub const WindowOptions = struct {
     /// needs to be re-rendered due to (for example) another window having covered part of it.
     /// Not needed if you're constantly re-rendering the entire window anyway.
     track_damage: ?bool = null,
+
+    /// This means that mouse motion and click events will be tracked.
+    track_mouse: ?bool = null,
+
+    /// This means
+    track_keyboard: ?bool = null,
 };
 
 pub const EventType = enum {
@@ -148,6 +154,37 @@ pub const EventType = enum {
     WindowDamaged,
     WindowVBlank,
     ApplicationTerminated,
+    KeyDown,
+    KeyUp,
+    MouseButtonDown,
+    MouseButtonUp,
+    MouseMotion,
+};
+
+pub const KeyEvent = struct {
+    scancode: u32,
+};
+
+pub const MouseMotionEvent = struct {
+    x: i16,
+    y: i16,
+};
+
+pub const MouseButtonEvent = struct {
+    x: i16,
+    y: i16,
+    button: MouseButton,
+};
+
+pub const MouseButton = enum(u8) {
+    left = 1,
+    middle = 2,
+    right = 3,
+    wheel_up = 4,
+    wheel_down = 5,
+    nav_backward = 6,
+    nav_forward = 7,
+    _,
 };
 
 pub fn Platform(comptime _settings: PlatformSettings) type {
@@ -216,6 +253,11 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             WindowDamaged: struct { window: *Window, x: u16, y: u16, w: u16, h: u16 },
             WindowVBlank: *Window,
             ApplicationTerminated: void,
+            KeyDown: KeyEvent,
+            KeyUp: KeyEvent,
+            MouseButtonDown: MouseButtonEvent,
+            MouseButtonUp: MouseButtonEvent,
+            MouseMotion: MouseMotionEvent,
         };
 
         pub const Window = struct {

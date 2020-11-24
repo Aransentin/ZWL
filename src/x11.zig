@@ -324,9 +324,9 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
 
                 const evdata = self.rbuf[p .. p + generic_event_size];
-                const evtype = evdata[0] & 0x7F;
+                const evtype = @intToEnum(XEventCode, evdata[0] & 0x7F);
 
-                if (evtype == @enumToInt(XEventCode.GenericEvent)) {
+                if (evtype == .GenericEvent) {
                     const gev = @ptrCast(*const GenericEvent, @alignCast(4, evdata.ptr));
 
                     // std.log.info("Size: {}", .{generic_event_size + gev.length * 4});
@@ -349,20 +349,20 @@ pub fn Platform(comptime Parent: anytype) type {
                 } else {
                     defer p += generic_event_size;
                     switch (evtype) {
-                        @enumToInt(XEventCode.Error) => {
+                        .Error => {
                             const ev = @ptrCast(*const XEventError, @alignCast(4, evdata.ptr));
                             std.log.err("{}: {}", .{ self.replies.seq_next, ev });
                             unreachable;
                         },
-                        @enumToInt(XEventCode.Reply) => {
+                        .Reply => {
                             // explicit reply for some request
                             const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
                             if (extlen > 0) unreachable; // Can't handle this yet
                         },
-                        @enumToInt(XEventCode.ReparentNotify), @enumToInt(XEventCode.MapNotify), @enumToInt(XEventCode.UnmapNotify), @enumToInt(XEventCode.NoExposure) => {
+                        .ReparentNotify, .MapNotify, .UnmapNotify, .NoExposure => {
                             // Whatever
                         },
-                        @enumToInt(XEventCode.Expose) => {
+                        .Expose => {
                             const ev = @ptrCast(*const Expose, @alignCast(4, evdata.ptr));
                             if (self.getWindowById(ev.window)) |window| {
                                 // TODO: Not greater than underlying buffer...?
@@ -377,7 +377,7 @@ pub fn Platform(comptime Parent: anytype) type {
                                 };
                             }
                         },
-                        @enumToInt(XEventCode.ConfigureNotify) => {
+                        .ConfigureNotify => {
                             const ev = @ptrCast(*const ConfigureNotify, @alignCast(4, evdata.ptr));
                             if (self.getWindowById(ev.window)) |window| {
                                 if (window.width != ev.width or window.height != ev.height) {
@@ -387,13 +387,65 @@ pub fn Platform(comptime Parent: anytype) type {
                                 }
                             }
                         },
-                        @enumToInt(XEventCode.DestroyNotify) => {
+                        .DestroyNotify => {
                             const ev = @ptrCast(*const DestroyNotify, @alignCast(4, evdata.ptr));
                             if (self.getWindowById(ev.window)) |window| {
                                 window.handle = 0;
                                 return Parent.Event{ .WindowDestroyed = @ptrCast(*Parent.Window, window) };
                             }
                         },
+
+                        .KeyPress,
+                        .KeyRelease,
+                        .ButtonPress,
+                        .ButtonRelease,
+                        .MotionNotify,
+                        => {
+                            const ev = @ptrCast(*const InputDeviceEvent, @alignCast(4, evdata.ptr));
+                            if (self.getWindowById(ev.event)) |window| {
+                                switch (evtype) {
+                                    .KeyPress,
+                                    .KeyRelease,
+                                    => {
+                                        var kev = zwl.KeyEvent{
+                                            .scancode = ev.detail,
+                                        };
+
+                                        return switch (evtype) {
+                                            .KeyPress => Parent.Event{ .KeyDown = kev },
+                                            .KeyRelease => Parent.Event{ .KeyUp = kev },
+                                            else => unreachable,
+                                        };
+                                    },
+
+                                    .ButtonPress,
+                                    .ButtonRelease,
+                                    => {
+                                        var bev = zwl.MouseButtonEvent{
+                                            .x = ev.event_x,
+                                            .y = ev.event_y,
+                                            .button = @intToEnum(zwl.MouseButton, ev.detail),
+                                        };
+
+                                        return switch (evtype) {
+                                            .ButtonPress => Parent.Event{ .MouseButtonDown = bev },
+                                            .ButtonRelease => Parent.Event{ .MouseButtonUp = bev },
+                                            else => unreachable,
+                                        };
+                                    },
+
+                                    .MotionNotify => return Parent.Event{
+                                        .MouseMotion = zwl.MouseMotionEvent{
+                                            .x = ev.event_x,
+                                            .y = ev.event_y,
+                                        },
+                                    },
+
+                                    else => unreachable,
+                                }
+                            }
+                        },
+
                         else => {
                             std.log.info("Unhandled event: {}", .{evtype});
                         },
@@ -470,6 +522,9 @@ pub fn Platform(comptime Parent: anytype) type {
                 var values: [2]u32 = undefined;
                 values[values_n] = EventStructureNotify;
                 values[values_n] |= if (options.track_damage == true) @as(u32, EventExposure) else 0;
+                values[values_n] |= if (options.track_mouse == true) @as(u32, EventButtonPress | EventButtonRelease | EventPointerMotion) else 0;
+                values[values_n] |= if (options.track_keyboard == true) @as(u32, EventKeyPress | EventKeyRelease) else 0;
+
                 values_n += 1;
 
                 value_mask |= CWEventMask;
