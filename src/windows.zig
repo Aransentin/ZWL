@@ -2,7 +2,13 @@ const std = @import("std");
 const builtin = @import("builtin");
 const zwl = @import("zwl.zig");
 const Allocator = std.mem.Allocator;
-const windows = std.os.windows;
+
+pub const windows = struct {
+    pub const kernel32 = @import("windows/kernel32.zig");
+    pub const user32 = @import("windows/user32.zig");
+    pub const gdi32 = @import("windows/gdi32.zig");
+    usingnamespace @import("windows/bits.zig");
+};
 
 const classname = std.unicode.utf8ToUtf16LeStringLiteral("ZWL");
 
@@ -55,7 +61,7 @@ pub fn Platform(comptime Parent: anytype) type {
             self.parent.allocator.destroy(self);
         }
 
-        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(.Stdcall) ?*c_void {
+        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(std.os.windows.WINAPI) ?*c_void {
             switch (uMsg) {
                 windows.user32.WM_CLOSE => {
                     _ = windows.user32.DestroyWindow(hwnd);
@@ -76,8 +82,47 @@ pub fn Platform(comptime Parent: anytype) type {
                             var platform = @ptrCast(*Self, window.parent.platform);
                             window.width = dim[0];
                             window.height = dim[1];
+
+                            if (window.render_context.createBitmap(window.width, window.height)) |new_bmp| {
+                                window.render_context.bitmap.destroy();
+                                window.render_context.bitmap = new_bmp;
+                            } else |err| {
+                                std.log.scoped(.zwl).emerg("failed to recreate software framebuffer: {}", .{err});
+                            }
+
                             platform.revent = Parent.Event{ .WindowResized = @ptrCast(*Parent.Window, window) };
                         }
+                    }
+                },
+                windows.user32.WM_PAINT => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
+                    if (window_opt) |window| {
+                        var platform = @ptrCast(*Self, window.parent.platform);
+
+                        var ps = std.mem.zeroes(windows.user32.PAINTSTRUCT);
+                        if (windows.user32.BeginPaint(hwnd, &ps)) |hDC| {
+                            defer _ = windows.user32.EndPaint(hwnd, &ps);
+
+                            const hOldBmp = windows.gdi32.SelectObject(
+                                window.render_context.memory_dc,
+                                window.render_context.bitmap.handle.toGdiObject(),
+                            );
+                            defer _ = windows.gdi32.SelectObject(window.render_context.memory_dc, hOldBmp);
+
+                            _ = windows.gdi32.BitBlt(
+                                hDC,
+                                0,
+                                0,
+                                window.render_context.bitmap.width,
+                                window.render_context.bitmap.height,
+                                window.render_context.memory_dc,
+                                0,
+                                0,
+                                @enumToInt(windows.gdi32.TernaryRasterOperation.SRCCOPY),
+                            );
+                        }
+
+                        platform.revent = Parent.Event{ .WindowVBlank = @ptrCast(*Parent.Window, window) };
                     }
                 },
                 else => {
@@ -110,10 +155,56 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub const Window = struct {
+            const RenderContext = struct {
+                const Bitmap = struct {
+                    handle: windows.gdi32.HBITMAP,
+                    pixels: [*]u32,
+                    width: u16,
+                    height: u16,
+
+                    fn destroy(self: *@This()) void {
+                        _ = windows.gdi32.DeleteObject(self.handle.toGdiObject());
+                        self.* = undefined;
+                    }
+                };
+
+                memory_dc: windows.user32.HDC,
+                bitmap: Bitmap,
+
+                fn createBitmap(self: @This(), width: u16, height: u16) !Bitmap {
+                    var bmi = std.mem.zeroes(windows.gdi32.BITMAPINFO);
+                    bmi.bmiHeader.biSize = @sizeOf(windows.gdi32.BITMAPINFOHEADER);
+                    bmi.bmiHeader.biWidth = width;
+                    bmi.bmiHeader.biHeight = -@as(i32, height);
+                    bmi.bmiHeader.biPlanes = 1;
+                    bmi.bmiHeader.biBitCount = 32;
+                    bmi.bmiHeader.biCompression = @enumToInt(windows.gdi32.Compression.BI_RGB);
+
+                    var bmp = Bitmap{
+                        .width = width,
+                        .height = height,
+                        .handle = undefined,
+                        .pixels = undefined,
+                    };
+
+                    bmp.handle = windows.gdi32.CreateDIBSection(
+                        self.memory_dc,
+                        &bmi,
+                        @enumToInt(windows.gdi32.DIBColors.DIB_RGB_COLORS),
+                        @ptrCast(**c_void, &bmp.pixels),
+                        null,
+                        0,
+                    ) orelse return error.CreateBitmapError;
+
+                    return bmp;
+                }
+            };
+
             parent: Parent.Window,
             handle: ?windows.HWND,
             width: u16,
             height: u16,
+            render_context: RenderContext,
 
             pub fn init(self: *Window, platform: *Self, options: zwl.WindowOptions) !void {
                 self.* = .{
@@ -123,6 +214,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     .width = options.width orelse 800,
                     .height = options.height orelse 600,
                     .handle = undefined,
+                    .render_context = undefined,
                 };
 
                 var namebuf: [512]u8 = undefined;
@@ -145,13 +237,29 @@ pub fn Platform(comptime Parent: anytype) type {
                 const handle = windows.user32.CreateWindowExW(0, classname, title, style, x, y, w, h, null, null, platform.instance, null);
                 if (handle == null) return error.CreateWindowFailed;
                 self.handle = handle.?;
-                _ = windows.user32.SetWindowLongPtrW(self.handle, 0, @bitCast(isize, @ptrToInt(self)));
+                _ = windows.user32.SetWindowLongPtrW(self.handle.?, 0, @bitCast(isize, @ptrToInt(self)));
+
+                const hDC = windows.user32.getDC(self.handle.?) catch return error.CreateWindowFailed;
+                defer _ = windows.user32.releaseDC(self.handle.?, hDC);
+
+                self.render_context = RenderContext{
+                    .memory_dc = undefined,
+                    .bitmap = undefined,
+                };
+                self.render_context.memory_dc = windows.gdi32.CreateCompatibleDC(hDC) orelse return error.CreateWindowFailed;
+                errdefer _ = windows.gdi32.DeleteDC(self.render_context.memory_dc);
+
+                self.render_context.bitmap = self.render_context.createBitmap(self.width, self.height) catch return error.CreateWindowFailed;
+                errdefer self.render_context.bitmap.destroy();
             }
 
             pub fn deinit(self: *Window) void {
-                if (self.handle != null) {
-                    _ = windows.user32.SetWindowLongPtrW(self.handle, 0, 0);
-                    _ = windows.user32.DestroyWindow(self.handle);
+                self.render_context.bitmap.destroy();
+                _ = windows.gdi32.DeleteDC(self.render_context.memory_dc);
+
+                if (self.handle) |handle| {
+                    _ = windows.user32.SetWindowLongPtrW(handle, 0, 0);
+                    _ = windows.user32.DestroyWindow(handle);
                 }
                 var platform = @ptrCast(*Self, self.parent.platform);
                 platform.parent.allocator.destroy(self);
@@ -165,14 +273,24 @@ pub fn Platform(comptime Parent: anytype) type {
                 return [2]u16{ self.width, self.height };
             }
 
-            pub fn mapPixels(self: *Window) !Parent.PixelBuffer {
+            pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
                 var platform = @ptrCast(*Self, self.parent.platform);
-                return error.Nope;
-                //return Parent.PixelBuffer{ .data = undefined, .width = self.sw.width, .height = self.sw.height };
+
+                return zwl.PixelBuffer{
+                    .data = self.render_context.bitmap.pixels,
+                    .width = self.render_context.bitmap.width,
+                    .height = self.render_context.bitmap.height,
+                };
             }
 
-            pub fn submitPixels(self: *Window) !void {
-                // Do
+            pub fn submitPixels(self: *Window, updates: []const zwl.UpdateArea) !void {
+                if (self.handle) |handle| {
+                    _ = windows.user32.InvalidateRect(
+                        handle,
+                        null,
+                        windows.FALSE, // We paint over *everything*
+                    );
+                }
             }
         };
     };
