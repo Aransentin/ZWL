@@ -126,6 +126,8 @@ pub fn Platform(comptime Parent: anytype) type {
                         platform.revent = Parent.Event{ .WindowVBlank = @ptrCast(*Parent.Window, window) };
                     }
                 },
+
+                // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
                 windows.user32.WM_MOUSEMOVE => {
                     var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
                     if (window_opt) |window| {
@@ -141,12 +143,12 @@ pub fn Platform(comptime Parent: anytype) type {
                         };
                     }
                 },
-                windows.user32.WM_LBUTTONDOWN,
-                windows.user32.WM_LBUTTONUP,
-                windows.user32.WM_RBUTTONDOWN,
-                windows.user32.WM_RBUTTONUP,
-                windows.user32.WM_MBUTTONDOWN,
-                windows.user32.WM_MBUTTONUP,
+                windows.user32.WM_LBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttondown
+                windows.user32.WM_LBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttonup
+                windows.user32.WM_RBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttondown
+                windows.user32.WM_RBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttonup
+                windows.user32.WM_MBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttondown
+                windows.user32.WM_MBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttonup
                 => {
                     var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
                     if (window_opt) |window| {
@@ -166,13 +168,28 @@ pub fn Platform(comptime Parent: anytype) type {
                         };
 
                         platform.revent = if ((uMsg == windows.user32.WM_LBUTTONDOWN) or (uMsg == windows.user32.WM_MBUTTONDOWN) or (uMsg == windows.user32.WM_RBUTTONDOWN))
-                            Parent.Event{
-                                .MouseButtonDown = data,
-                            }
+                            Parent.Event{ .MouseButtonDown = data }
                         else
-                            Parent.Event{
-                                .MouseButtonUp = data,
-                            };
+                            Parent.Event{ .MouseButtonUp = data };
+                    }
+                },
+                windows.user32.WM_KEYDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
+                windows.user32.WM_KEYUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
+                => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
+                    if (window_opt) |window| {
+                        var platform = @ptrCast(*Self, window.parent.platform);
+
+                        var kevent = zwl.KeyEvent{
+                            .scancode = @truncate(u8, @ptrToInt(lParam) >> 16), // 16-23 is the OEM scancode
+                        };
+
+                        std.debug.print("{}\n", .{kevent});
+
+                        platform.revent = if (uMsg == windows.user32.WM_KEYDOWN)
+                            Parent.Event{ .KeyDown = kevent }
+                        else
+                            Parent.Event{ .KeyUp = kevent };
                     }
                 },
                 else => {
