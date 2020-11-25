@@ -637,6 +637,14 @@ pub const MB_DEFMASK = 0x00000F00;
 pub const MB_MODEMASK = 0x00003000;
 pub const MB_MISCMASK = 0x0000C000;
 
+pub const MK_CONTROL = 0x0008;
+pub const MK_LBUTTON = 0x0001;
+pub const MK_MBUTTON = 0x0010;
+pub const MK_RBUTTON = 0x0002;
+pub const MK_SHIFT = 0x0004;
+pub const MK_XBUTTON1 = 0x0020;
+pub const MK_XBUTTON2 = 0x0040;
+
 pub const IDOK = 1;
 pub const IDCANCEL = 2;
 pub const IDABORT = 3;

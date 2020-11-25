@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const zwl = @import("zwl.zig");
+const log = std.log.scoped(.zwl);
 const Allocator = std.mem.Allocator;
 
 pub const windows = struct {
@@ -52,7 +53,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 .instance = @ptrCast(windows.HINSTANCE, module_handle),
             };
 
-            std.log.scoped(.zwl).info("Platform Initialized: Windows", .{});
+            log.info("Platform Initialized: Windows", .{});
             return @ptrCast(*Parent, self);
         }
 
@@ -87,7 +88,7 @@ pub fn Platform(comptime Parent: anytype) type {
                                 window.render_context.bitmap.destroy();
                                 window.render_context.bitmap = new_bmp;
                             } else |err| {
-                                std.log.scoped(.zwl).emerg("failed to recreate software framebuffer: {}", .{err});
+                                log.emerg("failed to recreate software framebuffer: {}", .{err});
                             }
 
                             platform.revent = Parent.Event{ .WindowResized = @ptrCast(*Parent.Window, window) };
@@ -125,7 +126,57 @@ pub fn Platform(comptime Parent: anytype) type {
                         platform.revent = Parent.Event{ .WindowVBlank = @ptrCast(*Parent.Window, window) };
                     }
                 },
+                windows.user32.WM_MOUSEMOVE => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
+                    if (window_opt) |window| {
+                        var platform = @ptrCast(*Self, window.parent.platform);
+
+                        const pos = @bitCast([2]u16, @intCast(u32, @ptrToInt(lParam)));
+
+                        platform.revent = Parent.Event{
+                            .MouseMotion = .{
+                                .x = @intCast(i16, pos[0]),
+                                .y = @intCast(i16, pos[1]),
+                            },
+                        };
+                    }
+                },
+                windows.user32.WM_LBUTTONDOWN,
+                windows.user32.WM_LBUTTONUP,
+                windows.user32.WM_RBUTTONDOWN,
+                windows.user32.WM_RBUTTONUP,
+                windows.user32.WM_MBUTTONDOWN,
+                windows.user32.WM_MBUTTONUP,
+                => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
+                    if (window_opt) |window| {
+                        var platform = @ptrCast(*Self, window.parent.platform);
+
+                        const pos = @bitCast([2]u16, @intCast(u32, @ptrToInt(lParam)));
+
+                        var data = zwl.MouseButtonEvent{
+                            .x = @intCast(i16, pos[0]),
+                            .y = @intCast(i16, pos[1]),
+                            .button = switch (uMsg) {
+                                windows.user32.WM_LBUTTONDOWN, windows.user32.WM_LBUTTONUP => .left,
+                                windows.user32.WM_MBUTTONDOWN, windows.user32.WM_MBUTTONUP => .middle,
+                                windows.user32.WM_RBUTTONDOWN, windows.user32.WM_RBUTTONUP => .right,
+                                else => unreachable,
+                            },
+                        };
+
+                        platform.revent = if ((uMsg == windows.user32.WM_LBUTTONDOWN) or (uMsg == windows.user32.WM_MBUTTONDOWN) or (uMsg == windows.user32.WM_RBUTTONDOWN))
+                            Parent.Event{
+                                .MouseButtonDown = data,
+                            }
+                        else
+                            Parent.Event{
+                                .MouseButtonUp = data,
+                            };
+                    }
+                },
                 else => {
+                    // log.debug("default windows message: 0x{X:0>4}", .{uMsg});
                     return windows.user32.DefWindowProcW(hwnd, uMsg, wParam, lParam);
                 },
             }
