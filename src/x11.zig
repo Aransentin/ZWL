@@ -408,7 +408,7 @@ pub fn Platform(comptime Parent: anytype) type {
                                     .KeyRelease,
                                     => {
                                         var kev = zwl.KeyEvent{
-                                            .scancode = ev.detail,
+                                            .scancode = ev.detail - 8,
                                         };
 
                                         return switch (evtype) {
