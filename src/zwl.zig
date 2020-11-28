@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
-const x11 = @import("x11.zig");
-const wayland = @import("wayland.zig");
-const windows = @import("windows.zig");
+const x11 = @import("x11/x11.zig");
+const wayland = @import("wayland/wayland.zig");
+const windows = @import("windows/windows.zig");
 
 pub const PlatformType = enum {
     X11,
@@ -28,9 +28,9 @@ pub const PlatformSettings = struct {
     /// fullscreen themselves on.
     monitors: bool = false,
 
-    // Set this to "true" if you're never creating more than a single window. Doing so
-    // simplifies the internal library bookkeeping, but means any call to
-    // createWindow() is undefined behaviour if a window already exists.
+    /// Set this to "true" if you're never creating more than a single window. Doing so
+    /// simplifies the internal library bookkeeping, but means any call to
+    /// createWindow() is undefined behaviour if a window already exists.
     single_window: bool = false,
 
     /// Specify if you want to do hardware or software rendering, or both. Or neither, if you just
@@ -43,18 +43,10 @@ pub const PlatformSettings = struct {
     /// and has quite poor performance. Does not affect X11 on Windows as the TCP connection is the only way it works.
     remote: bool = false,
 
-    /// Specify if you'd like to use XCB instead of the native Zig X11 connection. This is chiefly
-    /// useful for hardware rendering when you need to hand over the connection to other rendering APIs, e.g. Vulkan.
-    x11_use_xcb: bool = false,
-
     /// There is one Vulkan extension (VK_EXT_acquire_xlib_display) that only exists for Xlib, not XCB, If
     /// this is enabled, Xlib is linked instead and an XCB connection is acquired through that so this
     /// extension can be used.
-    x11_use_xcb_through_xlib: bool = false,
-
-    /// Specify if you'd like to use libwayland instead of the native Zig Wayland connection. This is chiefly
-    /// useful for hardware rendering when you need to hand over the connection to other rendering APIs, e.g. Vulkan.
-    wayland_use_libwayland: bool = false,
+    xcb_through_xlib: bool = false,
 
     /// If you set 'hdr' to true, the pixel buffer(s) you get is in the native window/monitor colour depth,
     /// which can have more (or fewer, technically) than 8 bits per colour.
@@ -91,16 +83,22 @@ pub const PlatformOptions = struct {
     } = .{},
 
     wayland: struct {
-        // todo: stuff
+        // Todo
     } = .{},
 
     windows: struct {
-        // todo: stuff
+        // Todo
     } = .{},
 };
 
-/// The window mode. All options degrade to "Fullscreen" if not supported by the platform.
+/// The window mode. All options degrade downwards towards the following option if not supported by the platform.
 pub const WindowMode = enum {
+    //// The window is an icon on the system tray.
+    Systray,
+
+    //// The window is minimized to the taskbar.
+    Minimized,
+
     /// A normal desktop window.
     Windowed,
 
@@ -113,78 +111,50 @@ pub const WindowMode = enum {
     Fullscreen,
 };
 
+pub const EventType = enum {
+    WindowResized,
+    WindowDestroyed,
+    WindowDamaged,
+    WindowVBlank,
+    PlatformTerminated,
+};
+
 /// Options for windows
 pub const WindowOptions = struct {
     /// The title of the window. Ignored if the platform does not support it. If specifying a title is not optional
     /// for the current platform, a null title will be interpreted as an empty string.
     title: ?[]const u8 = null,
 
-    width: ?u16 = null,
-    height: ?u16 = null,
-    visible: ?bool = null,
-    mode: ?WindowMode = null,
+    width: u16 = 1024,
+    height: u16 = 600,
+    visible: bool = true,
+    mode: WindowMode = .Windowed,
 
     /// Whether the user is allowed to resize the window or not. Note that this is more of a suggestion,
     /// and the window manager could resize us anyway if it so chooses.
-    resizeable: ?bool = null,
+    resizeable: bool = true,
 
     /// Set this to "true" you want the default system border and title bar with the name, buttons, etc. when windowed.
     /// Set this to "false" if you're a time traveller from 1999 developing your latest winamp skin or something.
-    decorations: ?bool = null,
+    decorations: bool = true,
 
     /// Set 'transparent' to true if you'd like to get pixels with an alpha component, so that parts of your window
     /// can be made transparent. Note that this will only work if the platform has a compositor running.
-    transparent: ?bool = null,
+    transparent: bool = false,
+
+    /// This means you will get an event every time vblank happens after you've submitted a pixel update.
+    track_vblank: bool = false,
 
     /// This means that the event callback will notify you if any of your window is "damaged", i.e.
     /// needs to be re-rendered due to (for example) another window having covered part of it.
     /// Not needed if you're constantly re-rendering the entire window anyway.
-    track_damage: ?bool = null,
+    track_damage: bool = false,
 
     /// This means that mouse motion and click events will be tracked.
-    track_mouse: ?bool = null,
+    track_mouse: bool = false,
 
-    /// This means
-    track_keyboard: ?bool = null,
-};
-
-pub const EventType = enum {
-    WindowResized,
-    WindowDestroyed,
-    WindowDamaged,
-    WindowVBlank,
-    ApplicationTerminated,
-    KeyDown,
-    KeyUp,
-    MouseButtonDown,
-    MouseButtonUp,
-    MouseMotion,
-};
-
-pub const KeyEvent = struct {
-    scancode: u32,
-};
-
-pub const MouseMotionEvent = struct {
-    x: i16,
-    y: i16,
-};
-
-pub const MouseButtonEvent = struct {
-    x: i16,
-    y: i16,
-    button: MouseButton,
-};
-
-pub const MouseButton = enum(u8) {
-    left = 1,
-    middle = 2,
-    right = 3,
-    wheel_up = 4,
-    wheel_down = 5,
-    nav_backward = 6,
-    nav_forward = 7,
-    _,
+    /// This means that keyboard events will be tracked.
+    track_keyboard: bool = false,
 };
 
 pub fn Platform(comptime _settings: PlatformSettings) type {
@@ -197,7 +167,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
 
         type: PlatformType,
         allocator: *Allocator,
-        window: if (settings.single_window) ?*Window else void,
+        window: if (!settings.single_window) void else ?*Window,
         windows: if (settings.single_window) void else []*Window,
 
         pub fn init(allocator: *Allocator, options: PlatformOptions) !*Self {
@@ -210,7 +180,6 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             if (settings.platforms_enabled.windows) blk: {
                 return PlatformWindows.init(allocator, options) catch break :blk;
             }
-
             return error.NoPlatformAvailable;
         }
 
@@ -237,7 +206,6 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.createWindow(@ptrCast(*PlatformWindows, self), options),
             };
             errdefer window.deinit();
-
             if (settings.single_window) {
                 self.window = window;
             } else {
@@ -252,12 +220,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             WindowDestroyed: *Window,
             WindowDamaged: struct { window: *Window, x: u16, y: u16, w: u16, h: u16 },
             WindowVBlank: *Window,
-            ApplicationTerminated: void,
-            KeyDown: KeyEvent,
-            KeyUp: KeyEvent,
-            MouseButtonDown: MouseButtonEvent,
-            MouseButtonUp: MouseButtonEvent,
-            MouseMotion: MouseMotionEvent,
+            PlatformTerminated: void,
         };
 
         pub const Window = struct {
@@ -275,19 +238,10 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     }
                     self.platform.windows = self.platform.allocator.realloc(self.platform.windows, self.platform.windows.len - 1) catch unreachable;
                 }
-
                 return switch (self.platform.type) {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.deinit(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.deinit(@ptrCast(*PlatformWayland.Window, self)),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.deinit(@ptrCast(*PlatformWindows.Window, self)),
-                };
-            }
-
-            pub fn configure(self: *Window, options: WindowOptions) !void {
-                return switch (self.platform.type) {
-                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.configure(@ptrCast(*PlatformX11.Window, self), options),
-                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.configure(@ptrCast(*PlatformWayland.Window, self), options),
-                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.configure(@ptrCast(*PlatformWindows.Window, self), options),
                 };
             }
 
@@ -299,7 +253,15 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 };
             }
 
-            pub fn mapPixels(self: *Window) anyerror!PixelBuffer {
+            pub fn setConfiguration(self: *Window, x: i16, y: i16, width: u16, height: u16) !void {
+                return switch (self.platform.type) {
+                    .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.setConfiguration(@ptrCast(*PlatformX11.Window, self), x, y, width, height),
+                    .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.setConfiguration(@ptrCast(*PlatformWayland.Window, self), x, y, width, height),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.setConfiguration(@ptrCast(*PlatformWindows.Window, self), x, y, width, height),
+                };
+            }
+
+            pub fn mapPixels(self: *Window) !PixelBuffer {
                 return switch (self.platform.type) {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.mapPixels(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.mapPixels(@ptrCast(*PlatformWayland.Window, self)),
@@ -318,14 +280,6 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
     };
 }
 
-pub const Pixel = extern struct {
-    //  TODO: Maybe make this *order* platform dependent!
-    b: u8,
-    g: u8,
-    r: u8,
-    a: u8 = 0xFF,
-};
-
 pub const UpdateArea = struct {
     x: u16,
     y: u16,
@@ -333,28 +287,19 @@ pub const UpdateArea = struct {
     h: u16,
 };
 
-pub const PixelBuffer = struct {
-    const Self = @This();
-
-    data: [*]u32,
-    // todo: format as well
-    width: u16,
-    height: u16,
-
-    pub inline fn setPixel(self: Self, x: usize, y: usize, color: Pixel) void {
-        self.data[self.width * y + x] = @bitCast(u32, color);
-    }
-
-    pub inline fn getPixel(self: Self, x: usize, y: usize) Pixel {
-        return @bitCast(Pixel, self.data[self.width * y + x]);
-    }
-
-    pub fn span(self: Self) []u32 {
-        return self.data[0 .. @as(usize, self.width) * @as(usize, self.height)];
-    }
+pub const BufferFormat = enum {
+    BGR8,
+    BGRA8,
+    BGR10,
 };
 
-comptime {
-    std.debug.assert(@sizeOf(Pixel) == 4);
-    std.debug.assert(@bitSizeOf(Pixel) == 32);
-}
+pub const PixelBuffer = struct {
+    const Self = @This();
+    format: BufferFormat,
+    data: [*]align(16) u32,
+    width: u16,
+    height: u16,
+    pub inline fn setPixel(self: Self, x: usize, y: usize, pixel: u32) void {
+        self.data[self.width * y + x] = pixel;
+    }
+};
