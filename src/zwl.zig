@@ -37,7 +37,6 @@ pub const PlatformSettings = struct {
     /// want to look at a blank window or something.
     /// You probably don't want to enable hardware rendering on Linux without linking XCB/Xlib or libwayland.
     render_software: bool = false,
-    render_hardware: bool = false,
 
     /// Specify if you want to be able to render to a remote server over TCP. This only works on X11 with software rendering
     /// and has quite poor performance. Does not affect X11 on Windows as the TCP connection is the only way it works.
