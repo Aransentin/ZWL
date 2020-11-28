@@ -18,10 +18,51 @@ pub const PlatformsEnabled = struct {
     windows: bool = if (builtin.os.tag == .windows) true else false,
 };
 
+pub const OpenGlVersion = struct {
+    major: u32,
+    minor: u32,
+};
+
+/// This enum lists all possible render backends ZWL can initialize on a window.
+pub const Backend = union(enum) {
+    /// Initialize no render backend, the window is just a raw window handle.
+    none,
+
+    /// Initialize basic software rendering. This enables the `mapPixels` and `submitPixels` functions.
+    software,
+
+    /// Initializes a OpenGL context for the window. The given version is the minimum version required.
+    opengl: OpenGlVersion,
+
+    /// Creates a vulkan swapchain for the window.
+    vulkan,
+};
+
+pub const BackendEnabled = struct {
+    /// When this is enabled, you can create windows that allow mapping their pixel content
+    /// into system memory and allow framebuffer modification by the CPU.
+    /// Create the window with Backend.software to use this feature.
+    software: bool = false,
+
+    /// When this is enabled, you can create windows that export an OpenGL context.
+    /// Create the window with Backend.opengl to use this feature.
+    opengl: bool = false,
+
+    /// When this is enabled, you can create windows that export a Vulkan swap chain.
+    /// In addition to that, the Platform itself will try initializing vulkan and provide
+    /// access to a vkInstance.
+    /// Create the window with Backend.vulkan to use this feature.
+    vulkan: bool = false,
+};
+
 /// Global compile-time platform settings
 pub const PlatformSettings = struct {
     /// The list of platforms you'd like to compile in support for.
     platforms_enabled: PlatformsEnabled = .{},
+
+    /// Specify which rendering backends you want to compile in support for.
+    /// You probably don't want to enable hardware rendering on Linux without linking XCB/Xlib or libwayland.
+    backends_enabled: BackendEnabled = .{},
 
     /// If you need to track data about specific monitors, set this to true. Usually not needed for
     /// always-windowed applications or programs that don't need explicit control on what monitor to
@@ -32,11 +73,6 @@ pub const PlatformSettings = struct {
     // simplifies the internal library bookkeeping, but means any call to
     // createWindow() is undefined behaviour if a window already exists.
     single_window: bool = false,
-
-    /// Specify if you want to do hardware or software rendering, or both. Or neither, if you just
-    /// want to look at a blank window or something.
-    /// You probably don't want to enable hardware rendering on Linux without linking XCB/Xlib or libwayland.
-    render_software: bool = false,
 
     /// Specify if you want to be able to render to a remote server over TCP. This only works on X11 with software rendering
     /// and has quite poor performance. Does not affect X11 on Windows as the TCP connection is the only way it works.

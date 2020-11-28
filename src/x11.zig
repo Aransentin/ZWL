@@ -503,7 +503,7 @@ pub fn Platform(comptime Parent: anytype) type {
             mapped: bool,
             width: u16,
             height: u16,
-            sw: if (Parent.settings.render_software) WindowSWData else void,
+            sw: if (Parent.settings.backends_enabled.software) ?WindowSWData else void,
 
             pub fn init(self: *Window, platform: *Self, options: zwl.WindowOptions, writer: anytype) !void {
                 self.* = .{
@@ -545,7 +545,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 try writer.writeAll(std.mem.sliceAsBytes(values[0..values_n]));
                 platform.replies.ignoreEvent();
 
-                if (Parent.settings.render_software) {
+                if (Parent.settings.backends_enabled.software) {
                     self.sw = .{
                         .gc = platform.genXId(),
                         .pixmap = 0,
@@ -554,7 +554,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     };
                     const create_gc = CreateGC{
                         .request_length = 4,
-                        .cid = self.sw.gc,
+                        .cid = self.sw.?.gc,
                         .drawable = .{ .window = self.handle },
                         .bitmask = 0,
                     };
@@ -562,14 +562,14 @@ pub fn Platform(comptime Parent: anytype) type {
                     const create_region = CreateRegion{
                         .opcode = platform.xfixes_major_opcode,
                         .length_request = 2,
-                        .region = self.sw.region,
+                        .region = self.sw.?.region,
                     };
                     try writer.writeAll(std.mem.asBytes(&create_region));
                     platform.replies.ignoreEvent();
 
                     const select_input = PresentSelectInput{
                         .opcode = platform.present_major_opcode,
-                        .event_id = self.sw.present_event,
+                        .event_id = self.sw.?.present_event,
                         .window = self.handle,
                         .mask = 2,
                     };
@@ -590,28 +590,28 @@ pub fn Platform(comptime Parent: anytype) type {
                 var wbuf = std.io.bufferedWriter(platform.file.writer());
                 var writer = wbuf.writer();
 
-                if (Parent.settings.render_software) {
-                    writer.writeAll(std.mem.asBytes(&FreeGC{ .gc = self.sw.gc })) catch return;
+                if (Parent.settings.backends_enabled.software) {
+                    writer.writeAll(std.mem.asBytes(&FreeGC{ .gc = self.sw.?.gc })) catch return;
                     platform.replies.ignoreEvent();
-                    if (self.sw.pixmap != 0) {
-                        writer.writeAll(std.mem.asBytes(&FreePixmap{ .pixmap = self.sw.pixmap })) catch return;
+                    if (self.sw.?.pixmap != 0) {
+                        writer.writeAll(std.mem.asBytes(&FreePixmap{ .pixmap = self.sw.?.pixmap })) catch return;
                         platform.replies.ignoreEvent();
                     }
 
-                    const destroy_region = DestroyRegion{ .opcode = platform.xfixes_major_opcode, .region = self.sw.region };
+                    const destroy_region = DestroyRegion{ .opcode = platform.xfixes_major_opcode, .region = self.sw.?.region };
                     writer.writeAll(std.mem.asBytes(&destroy_region)) catch return;
                     platform.replies.ignoreEvent();
 
                     const select_input = PresentSelectInput{
                         .opcode = platform.present_major_opcode,
-                        .event_id = self.sw.present_event,
+                        .event_id = self.sw.?.present_event,
                         .window = self.handle,
                         .mask = 0,
                     };
                     writer.writeAll(std.mem.asBytes(&select_input)) catch return;
                     platform.replies.ignoreEvent();
 
-                    platform.parent.allocator.free(self.sw.data);
+                    platform.parent.allocator.free(self.sw.?.data);
                 }
 
                 if (self.handle != 0) {
@@ -660,31 +660,31 @@ pub fn Platform(comptime Parent: anytype) type {
                 var wbuf = std.io.bufferedWriter(platform.file.writer());
                 var writer = wbuf.writer();
 
-                if (self.sw.pixmap == 0 or self.sw.width != self.width or self.sw.height != self.height) {
-                    if (self.sw.pixmap != 0) {
-                        try writer.writeAll(std.mem.asBytes(&FreePixmap{ .pixmap = self.sw.pixmap }));
+                if (self.sw.?.pixmap == 0 or self.sw.?.width != self.width or self.sw.?.height != self.height) {
+                    if (self.sw.?.pixmap != 0) {
+                        try writer.writeAll(std.mem.asBytes(&FreePixmap{ .pixmap = self.sw.?.pixmap }));
                         platform.replies.ignoreEvent();
                     }
-                    self.sw.pixmap = platform.genXId();
-                    self.sw.width = self.width;
-                    self.sw.height = self.height;
+                    self.sw.?.pixmap = platform.genXId();
+                    self.sw.?.width = self.width;
+                    self.sw.?.height = self.height;
 
                     const create_pixmap = CreatePixmap{
                         .depth = platform.root_depth,
-                        .pid = self.sw.pixmap,
+                        .pid = self.sw.?.pixmap,
                         .drawable = .{ .window = self.handle },
-                        .width = self.sw.width,
-                        .height = self.sw.height,
+                        .width = self.sw.?.width,
+                        .height = self.sw.?.height,
                     };
                     try writer.writeAll(std.mem.asBytes(&create_pixmap));
                     platform.replies.ignoreEvent();
 
                     // Todo: MIT-SHM
 
-                    self.sw.data = try platform.parent.allocator.realloc(self.sw.data, @intCast(usize, self.sw.width) * @intCast(usize, self.sw.height));
+                    self.sw.?.data = try platform.parent.allocator.realloc(self.sw.?.data, @intCast(usize, self.sw.?.width) * @intCast(usize, self.sw.?.height));
                 }
                 try wbuf.flush();
-                return zwl.PixelBuffer{ .data = self.sw.data.ptr, .width = self.sw.width, .height = self.sw.height };
+                return zwl.PixelBuffer{ .data = self.sw.?.data.ptr, .width = self.sw.?.width, .height = self.sw.?.height };
             }
 
             pub fn submitPixels(self: *Window, updates: []const zwl.UpdateArea) !void {
@@ -698,8 +698,8 @@ pub fn Platform(comptime Parent: anytype) type {
                         const pixels_n = @as(u32, update.w) * @as(u32, update.h);
                         const put_image = PutImageBig{
                             .request_length = 7 + pixels_n,
-                            .drawable = .{ .pixmap = self.sw.pixmap },
-                            .gc = self.sw.gc,
+                            .drawable = .{ .pixmap = self.sw.?.pixmap },
+                            .gc = self.sw.?.gc,
                             .width = update.w,
                             .height = update.h,
                             .dst = [2]u16{ update.x, update.y },
@@ -708,15 +708,15 @@ pub fn Platform(comptime Parent: anytype) type {
                         };
                         try writer.writeAll(std.mem.asBytes(&put_image));
 
-                        if (update.w == self.sw.width) {
+                        if (update.w == self.sw.?.width) {
                             const offset = @as(u32, update.w) * @as(u32, update.y);
-                            try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[offset .. offset + pixels_n]));
+                            try writer.writeAll(std.mem.sliceAsBytes(self.sw.?.data[offset .. offset + pixels_n]));
                         } else {
                             var ri: u16 = 0;
                             while (ri < update.h) : (ri += 1) {
                                 const row_pixels_n = @as(u32, update.w);
-                                const row_pixels_offset = (@as(u32, self.sw.width) * @as(u32, update.y + ri)) + @as(u32, update.x);
-                                try writer.writeAll(std.mem.sliceAsBytes(self.sw.data[row_pixels_offset .. row_pixels_offset + row_pixels_n]));
+                                const row_pixels_offset = (@as(u32, self.sw.?.width) * @as(u32, update.y + ri)) + @as(u32, update.x);
+                                try writer.writeAll(std.mem.sliceAsBytes(self.sw.?.data[row_pixels_offset .. row_pixels_offset + row_pixels_n]));
                             }
                         }
                         platform.replies.ignoreEvent();
@@ -729,7 +729,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 const set_region = SetRegion{
                     .opcode = platform.xfixes_major_opcode,
                     .length_request = 2 + @intCast(u16, updates.len * 2),
-                    .region = self.sw.region,
+                    .region = self.sw.?.region,
                 };
                 try writer.writeAll(std.mem.asBytes(&set_region));
                 for (updates) |update| {
@@ -743,10 +743,10 @@ pub fn Platform(comptime Parent: anytype) type {
                     .length = 18,
                     .opcode = platform.present_major_opcode,
                     .window = self.handle,
-                    .pixmap = self.sw.pixmap,
+                    .pixmap = self.sw.?.pixmap,
                     .serial = 0,
-                    .valid_area = self.sw.region,
-                    .update_area = self.sw.region,
+                    .valid_area = self.sw.?.region,
+                    .update_area = self.sw.?.region,
                     .crtc = 0,
                     .wait_fence = 0,
                     .idle_fence = 0,
