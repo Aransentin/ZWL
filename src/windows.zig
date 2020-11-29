@@ -513,19 +513,22 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
-                if (self.render_backend != .software)
-                    return error.InvalidRenderBackend;
-                var platform = @ptrCast(*Self, self.parent.platform);
+                switch (self.backend) {
+                    .software => |render_ctx| {
+                        var platform = @ptrCast(*Self, self.parent.platform);
 
-                return zwl.PixelBuffer{
-                    .data = self.render_context.bitmap.pixels,
-                    .width = self.render_context.bitmap.width,
-                    .height = self.render_context.bitmap.height,
-                };
+                        return zwl.PixelBuffer{
+                            .data = render_ctx.bitmap.pixels,
+                            .width = render_ctx.bitmap.width,
+                            .height = render_ctx.bitmap.height,
+                        };
+                    },
+                    else => return error.InvalidRenderBackend,
+                }
             }
 
             pub fn submitPixels(self: *Window, updates: []const zwl.UpdateArea) !void {
-                if (self.render_backend != .software)
+                if (self.backend != .software)
                     return error.InvalidRenderBackend;
                 if (self.handle) |handle| {
                     _ = windows.user32.InvalidateRect(
