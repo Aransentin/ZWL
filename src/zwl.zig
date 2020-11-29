@@ -21,6 +21,7 @@ pub const PlatformsEnabled = struct {
 pub const OpenGlVersion = struct {
     major: u32,
     minor: u32,
+    core: bool = true, // enable core profile
 };
 
 /// This enum lists all possible render backends ZWL can initialize on a window.
@@ -179,8 +180,11 @@ pub const WindowOptions = struct {
     /// This means that mouse motion and click events will be tracked.
     track_mouse: ?bool = null,
 
-    /// This means
+    /// This means that keyboard events will be tracked.
     track_keyboard: ?bool = null,
+
+    /// This defines the render backend ZWL will initialize.
+    backend: Backend = Backend.none,
 };
 
 pub const EventType = enum {
@@ -331,6 +335,14 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.getSize(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.getSize(@ptrCast(*PlatformWayland.Window, self)),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.getSize(@ptrCast(*PlatformWindows.Window, self)),
+                };
+            }
+
+            pub fn present(self: *Window) !void {
+                return switch (self.platform.type) {
+                    .X11 => @panic("not implemented yet!"),
+                    .Wayland => @panic("not implemented yet!"),
+                    .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.present(@ptrCast(*PlatformWindows.Window, self)),
                 };
             }
 

@@ -72,6 +72,59 @@ pub const TernaryRasterOperation = extern enum {
     WHITENESS = 0x00FF0062, // dest = WHITE
 };
 
+pub const PIXELFORMATDESCRIPTOR = extern struct {
+    nSize: WORD = @sizeOf(@This()),
+    nVersion: WORD,
+    dwFlags: DWORD,
+    iPixelType: BYTE,
+    cColorBits: BYTE,
+    cRedBits: BYTE,
+    cRedShift: BYTE,
+    cGreenBits: BYTE,
+    cGreenShift: BYTE,
+    cBlueBits: BYTE,
+    cBlueShift: BYTE,
+    cAlphaBits: BYTE,
+    cAlphaShift: BYTE,
+    cAccumBits: BYTE,
+    cAccumRedBits: BYTE,
+    cAccumGreenBits: BYTE,
+    cAccumBlueBits: BYTE,
+    cAccumAlphaBits: BYTE,
+    cDepthBits: BYTE,
+    cStencilBits: BYTE,
+    cAuxBuffers: BYTE,
+    iLayerType: BYTE,
+    bReserved: BYTE,
+    dwLayerMask: DWORD,
+    dwVisibleMask: DWORD,
+    dwDamageMask: DWORD,
+};
+
+pub const PFD_TYPE_RGBA = 0;
+pub const PFD_TYPE_COLORINDEX = 1;
+
+pub const PFD_MAIN_PLANE = 0;
+pub const PFD_OVERLAY_PLANE = 1;
+pub const PFD_UNDERLAY_PLANE = -1;
+
+pub const PFD_DOUBLEBUFFER = 0x00000001;
+pub const PFD_STEREO = 0x00000002;
+pub const PFD_DRAW_TO_WINDOW = 0x00000004;
+pub const PFD_DRAW_TO_BITMAP = 0x00000008;
+pub const PFD_SUPPORT_GDI = 0x00000010;
+pub const PFD_SUPPORT_OPENGL = 0x00000020;
+pub const PFD_GENERIC_FORMAT = 0x00000040;
+pub const PFD_NEED_PALETTE = 0x00000080;
+pub const PFD_NEED_SYSTEM_PALETTE = 0x00000100;
+pub const PFD_SWAP_EXCHANGE = 0x00000200;
+pub const PFD_SWAP_COPY = 0x00000400;
+pub const PFD_SWAP_LAYER_BUFFERS = 0x00000800;
+pub const PFD_GENERIC_ACCELERATED = 0x00001000;
+pub const PFD_SUPPORT_DIRECTDRAW = 0x00002000;
+pub const PFD_DIRECT3D_ACCELERATED = 0x00004000;
+pub const PFD_SUPPORT_COMPOSITION = 0x00008000;
+
 pub extern "gdi32" fn CreateDIBSection(
     hdc: HDC,
     pbmi: *const BITMAPINFO,
@@ -118,3 +171,24 @@ pub extern "gdi32" fn TextOutA(
     c: c_int,
 ) callconv(WINAPI) BOOL;
 
+pub extern "gdi32" fn wglCreateContext(hDC: HDC) callconv(WINAPI) ?HGLRC;
+
+pub extern "gdi32" fn wglDeleteContext(context: HGLRC) callconv(WINAPI) BOOL;
+
+pub extern "gdi32" fn wglMakeCurrent(
+    hDC: HDC,
+    gl_context: ?HGLRC,
+) callconv(WINAPI) BOOL;
+
+pub extern "gdi32" fn SwapBuffers(hDC: HDC) callconv(WINAPI) BOOL;
+
+pub extern "gdi32" fn SetPixelFormat(
+    hdc: HDC,
+    format: c_int,
+    ppfd: *const PIXELFORMATDESCRIPTOR,
+) callconv(WINAPI) BOOL;
+
+pub extern "gdi32" fn ChoosePixelFormat(
+    hdc: HDC,
+    ppfd: *const PIXELFORMATDESCRIPTOR,
+) c_int;
