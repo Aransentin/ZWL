@@ -14,26 +14,27 @@ const Platform = zwl.Platform(.{
 
 // Temporary main wrapper to make all errors unreachable,
 // to see how small I can make the binary
-pub fn main() void {
+pub fn main() !void {
     // defer _ = gpa.deinit();
-    innerMain() catch unreachable;
+    try innerMain();
 }
 
 fn innerMain() !void {
     var platform = try Platform.init(std.heap.page_allocator, .{});
     defer platform.deinit();
 
-    const window = try platform.createWindow(.{ .title = "Demo", .width = 512, .height = 512, .resizeable = false, .visible = true, .decorations = true, .track_damage = true, .track_vblank = true });
+    const window = try platform.createWindow(.{ .title = "Demo", .width = 512, .height = 512, .resizeable = false, .visible = true, .decorations = true, .track_damage = true, .track_vblank = true, .track_keyboard = true });
     defer window.deinit();
 
     var prev_ts = std.time.nanoTimestamp();
+    try paint(window, prev_ts);
 
     while (true) {
         const event = try platform.waitForEvent();
         switch (event) {
             .WindowDamaged => |damage| {
                 std.log.info("Window damaged: {}x{} @ {}x{}", .{ damage.w, damage.h, damage.x, damage.y });
-                try paint(damage.window, prev_ts);
+                // try paint(damage.window, prev_ts);
             },
             .WindowVBlank => |win| {
                 var new_ts = std.time.nanoTimestamp();

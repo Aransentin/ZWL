@@ -141,6 +141,35 @@ pub const MotifHints = extern struct {
     status: u32,
 };
 
+pub const XinputEventType = enum(u5) {
+    DeviceChanged = 1,
+    KeyPress = 2,
+    KeyRelease = 3,
+    ButtonPress = 4,
+    ButtonRelease = 5,
+    Motion = 6,
+    Enter = 7,
+    Leave = 8,
+    FocusIn = 9,
+    FocusOut = 10,
+    HierarchyChanged = 11,
+    PropertyEvent = 12,
+    RawKeyPress = 13,
+    RawKeyRelease = 14,
+    RawButtonPress = 15,
+    RawButtonRelease = 16,
+    RawMotion = 17,
+    TouchBegin = 18,
+    TouchUpdate = 19,
+    TouchEnd = 20,
+    TouchOwnership = 21,
+    RawTouchBegin = 22,
+    RawTouchUpdate = 23,
+    RawTouchEnd = 24,
+    BarrierHit = 25,
+    BarrierLeave = 26,
+};
+
 // === Setup ===
 
 pub const SetupRequest = extern struct {
@@ -620,6 +649,20 @@ pub const PresentCompleteNotify = extern struct {
     msc: u64,
 };
 
+pub const PresentIdleNotify = extern struct {
+    XGE: u8 = 35,
+    extension: u8,
+    sequence_number: u16,
+    length: u32 = 0,
+    evtype: u16 = 2,
+    pad0: u16,
+    event_id: u32,
+    window: WINDOW,
+    serial: u32,
+    pixmap: PIXMAP,
+    idle_fence: SyncFence,
+};
+
 pub const ShmQueryVersion = extern struct {
     opcode: u8,
     minor: u8 = 0,
@@ -650,4 +693,61 @@ pub const ShmAttachFd = extern struct {
     readOnly: BOOL,
     pad0: u8 = 0,
     pad1: u16 = 0,
+};
+
+pub const XISelectEvents = extern struct {
+    opcode: u8,
+    minor: u8 = 46,
+    request_length: u16,
+    window: WINDOW,
+    num_masks: u16,
+    pad0: u16,
+};
+
+pub const XIQueryVersion = extern struct {
+    opcode: u8,
+    minor: u8 = 47,
+    request_length: u16 = 2,
+    version_major: u16,
+    version_minor: u16,
+};
+
+pub const XIEventMask = extern struct {
+    device_id: u16,
+    mask_len: u16,
+};
+
+pub const XIKeyPress = extern struct {
+    code: u8 = 35,
+    extension: u8,
+    seqnum: u16,
+    length: u32,
+    evtype: u16,
+    device_id: u16,
+    timestamp: u32,
+    detail: u32,
+    root: WINDOW,
+    event: WINDOW,
+    child: WINDOW,
+    root_x0: u16,
+    root_x1: u16,
+    root_y0: u16,
+    root_y1: u16,
+    event_x0: u16,
+    event_x1: u16,
+    event_y0: u16,
+    event_y1: u16,
+    buttons_len: u16,
+    valuators_len: u16,
+    source_id: u16,
+    pad0: u16,
+    flags: u32,
+    mods_base: u32,
+    mods_latched: u32,
+    mods_locked: u32,
+    mods_effective: u32,
+    group_base: u8,
+    group_latched: u8,
+    group_locked: u8,
+    group_effective: u8,
 };

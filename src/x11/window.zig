@@ -23,7 +23,7 @@ pub fn Window(comptime PPlatform: anytype) type {
         width: u16,
         height: u16,
         present_event: EventID,
-        frame_id: u32,
+        frame_id: u32 = 0,
 
         pub fn init(self: *Self, options: zwl.WindowOptions) !void {
             var platform = @ptrCast(*PPlatform.PlatformX11, self.parent.platform);
@@ -33,13 +33,13 @@ pub fn Window(comptime PPlatform: anytype) type {
             self.gc = platform.genXId();
             self.region = platform.genXId();
             self.present_event = platform.genXId();
-            self.frame_id = 0;
             self.colormap = 0;
             self.pixmap = 0;
             self.shm_segment = 0;
             self.shm_fd = 0;
             self.shm_fd_data = &[0]u8{};
             self.pixmap_width = 0;
+            self.frame_id = 0;
             self.pixmap_height = 0;
             self.pixmap_format = if (platform.root_color_bits == 10) zwl.BufferFormat.BGR10 else zwl.BufferFormat.BGR8;
             self.pixmap_data = &[0]u32{};
@@ -120,9 +120,31 @@ pub fn Window(comptime PPlatform: anytype) type {
                     .opcode = platform.ext_op_present,
                     .event_id = self.present_event,
                     .window = self.handle,
-                    .mask = 2,
+                    .mask = 4,
                 };
                 try writer.writeAll(std.mem.asBytes(&select_input));
+                platform.replybuf.ignoreEvent();
+            }
+
+            if (options.track_keyboard or options.track_mouse) {
+                const select_events = XISelectEvents{
+                    .opcode = platform.ext_op_xinput,
+                    .request_length = 5,
+                    .window = self.handle,
+                    .num_masks = 1,
+                    .pad0 = 0,
+                };
+                try writer.writeAll(std.mem.asBytes(&select_events));
+                try writer.writeAll(std.mem.asBytes(&XIEventMask{ .device_id = 0x01, .mask_len = 1 }));
+                var evmask: u32 = 0;
+                if (options.track_keyboard) {
+                    evmask += 1 << @enumToInt(XinputEventType.KeyPress);
+                    evmask += 1 << @enumToInt(XinputEventType.KeyRelease);
+                }
+                if (options.track_mouse) {
+                    // Do
+                }
+                try writer.writeAll(std.mem.asBytes(&evmask));
                 platform.replybuf.ignoreEvent();
             }
 
@@ -360,7 +382,7 @@ pub fn Window(comptime PPlatform: anytype) type {
                     if (self.shm_fd == 0) {
                         self.shm_fd = try std.os.memfd_create("ZWL", std.os.MFD_CLOEXEC);
                     }
-                    const shm_size: usize = @sizeOf(u32) * @intCast(u64, self.pixmap_width) * @intCast(u64, self.pixmap_height);
+                    const shm_size: u32 = @sizeOf(u32) * @intCast(u32, self.pixmap_width) * @intCast(u32, self.pixmap_height);
                     try std.os.ftruncate(self.shm_fd, shm_size);
 
                     // If we've never mapped it, do so. Else remap.

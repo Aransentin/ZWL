@@ -34,6 +34,7 @@ pub fn Platform(comptime PPlatform: anytype) type {
         ext_op_randr: u8 = 0,
         ext_op_present: u8 = 0,
         ext_ev_present: u8 = 0,
+        ext_op_xinput: u8 = 0,
 
         atom_motif_wm_hints: u32 = 0,
 
@@ -153,22 +154,36 @@ pub fn Platform(comptime PPlatform: anytype) type {
                     .GenericEvent => {
                         const gev = @ptrCast(*const GenericEvent, &eventdata);
                         const extralen = gev.length * 4;
-                        var extrabuf: [32]u8 align(8) = undefined;
-                        if (extralen > extrabuf.len) unreachable;
-                        _ = try reader.readAll(extrabuf[0..extralen]);
                         if (gev.extension == self.ext_op_present) {
-                            if (gev.evtype == 1) {
-                                var present_complete: PresentCompleteNotify = undefined;
-                                std.mem.copy(u8, std.mem.asBytes(&present_complete), eventdata[0..]);
-                                std.mem.copy(u8, std.mem.asBytes(&present_complete)[32..], extrabuf[0..extralen]);
-
-                                if (self.getWindowById(present_complete.window)) |window| {
-                                    if (window.frame_id == present_complete.serial) {
-                                        window.frame_id += 1;
-                                        return PPlatform.Event{ .WindowVBlank = @ptrCast(*PPlatform.Window, window) };
+                            switch (gev.evtype) {
+                                2 => {
+                                    var present_idle: PresentIdleNotify = undefined;
+                                    std.mem.copy(u8, std.mem.asBytes(&present_idle), eventdata[0..]);
+                                    if (self.getWindowById(present_idle.window)) |window| {
+                                        if (window.frame_id == present_idle.serial) {
+                                            window.frame_id += 1;
+                                            return PPlatform.Event{ .WindowVBlank = @ptrCast(*PPlatform.Window, window) };
+                                        }
                                     }
-                                }
+                                },
+                                else => unreachable,
                             }
+                        } else if (gev.extension == self.ext_op_xinput) {
+                            switch (gev.evtype) {
+                                @enumToInt(XinputEventType.KeyPress) => {
+                                    var key_press: XIKeyPress = undefined;
+                                    std.mem.copy(u8, std.mem.asBytes(&key_press), eventdata[0..]);
+                                    _ = try reader.readAll(std.mem.asBytes(&key_press)[32..]);
+                                    const rem_len: usize = 32 + extralen - @sizeOf(XIKeyPress);
+                                    try reader.skipBytes(rem_len, .{ .buf_size = 32 });
+                                    std.debug.print("{}\n", .{key_press});
+                                },
+                                else => {
+                                    try reader.skipBytes(extralen, .{ .buf_size = 64 });
+                                },
+                            }
+                        } else {
+                            try reader.skipBytes(extralen, .{ .buf_size = 64 });
                         }
                     },
                     .ReparentNotify, .MapNotify, .UnmapNotify => {}, // Who cares

@@ -33,6 +33,7 @@ pub fn do(platform: anytype, display_info: DisplayInfo, auth_cookie: ?AuthCookie
     try initExtension(platform, writer, "BIG-REQUESTS", .QueryExtBigRequests);
     try initExtension(platform, writer, "Generic Event Extension", .QueryExtGenericEvents);
     try initExtension(platform, writer, "Present", .QueryExtPresent);
+    try initExtension(platform, writer, "XInputExtension", .QueryXInputExtension);
 
     if (display_info.unix) {
         try initExtension(platform, writer, "MIT-SHM", .QueryExtMitShm);
@@ -160,6 +161,7 @@ const ReplyId = enum(u32) {
     QueryExtPresent,
     QueryExtMitShm,
     QueryExtRandr,
+    QueryXInputExtension,
     AtomMotifWmHints,
     Ignore,
 };
@@ -226,10 +228,17 @@ fn handleEvents(platform: anytype, reader: anytype, writer: anytype) !void {
                     try platform.replybuf.push(@enumToInt(ReplyId.Ignore));
                 }
             },
+            .QueryXInputExtension => {
+                const qreply = @ptrCast(*const QueryExtensionReply, &evdata);
+                if (qreply.present != 0) {
+                    platform.ext_op_xinput = qreply.major_opcode;
+                    try writer.writeAll(std.mem.asBytes(&XIQueryVersion{ .opcode = qreply.major_opcode, .version_major = 2, .version_minor = 3 }));
+                    try platform.replybuf.push(@enumToInt(ReplyId.Ignore));
+                }
+            },
             .QueryExtRandr => {
                 const qreply = @ptrCast(*const QueryExtensionReply, &evdata);
                 platform.ext_op_randr = qreply.major_opcode;
-                // hmm do it maybe
             },
             .AtomMotifWmHints => {
                 const qreply = @ptrCast(*const InternAtomReply, &evdata);

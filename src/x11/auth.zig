@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const zwl = @import("../zwl.zig");
 const DisplayInfo = @import("display_info.zig").DisplayInfo;
+const win32 = @import("../windows/win32.zig");
 
 pub const AuthCookie = struct {
     data: [16]u8,
@@ -14,10 +15,11 @@ pub const AuthCookie = struct {
         const xauthority_file = blk: {
             if (options.x11.xauthority_location) |path| break :blk try std.fs.openFileAbsolute(path, .{ .read = true, .write = false });
             if (builtin.os.tag == .windows) {
-                const path = std.os.getenvW(std.unicode.utf8ToUtf16LeStringLiteral("XAUTHORITY")) orelse wblk: {
-                    break :wblk std.unicode.utf8ToUtf16LeStringLiteral("TODO"); // "%HOME%\Xauthority"
-                };
-                break :blk try std.fs.openFileAbsoluteW(path, .{ .read = true, .write = false });
+                // Opens Xauthority in %HOMEDRIVE%%HOMEPATH%, as with Xming
+                // TODO: UTF-16 HOMEPATH, the W version crashes on me for some reason
+                var pathbuf: [256]u8 = undefined;
+                const nb = win32.ExpandEnvironmentStringsA("%HOMEDRIVE%%HOMEPATH%\\Xauthority", &pathbuf, 256);
+                break :blk try std.fs.openFileAbsolute(pathbuf[0 .. nb - 1], .{ .read = true, .write = false });
             } else {
                 if (std.os.getenv("XAUTHORITY")) |path| break :blk try std.fs.openFileAbsolute(path, .{ .read = true, .write = false });
                 const home = std.os.getenv("HOME") orelse return error.HomeDirectoryNotFound;
