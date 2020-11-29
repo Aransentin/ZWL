@@ -18,9 +18,11 @@ const classname = std.unicode.utf8ToUtf16LeStringLiteral("ZWL");
 pub fn Platform(comptime Parent: anytype) type {
     return struct {
         const Self = @This();
+
         parent: Parent,
         instance: windows.HINSTANCE,
         revent: ?Parent.Event = null,
+        libgl: ?windows.HMODULE,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
             var self = try allocator.create(Self);
@@ -53,15 +55,52 @@ pub fn Platform(comptime Parent: anytype) type {
                     .windows = if (!Parent.settings.single_window) &[0]*Parent.Window{} else undefined,
                 },
                 .instance = @ptrCast(windows.HINSTANCE, module_handle),
+                .libgl = null,
             };
+
+            if (Parent.settings.backends_enabled.opengl) {
+                self.libgl = windows.kernel32.LoadLibraryA("opengl32.dll") orelse return error.MissingOpenGL;
+            }
 
             log.info("Platform Initialized: Windows", .{});
             return @ptrCast(*Parent, self);
         }
 
         pub fn deinit(self: *Self) void {
+            if (self.libgl) |libgl| {
+                _ = windows.kernel32.FreeLibrary(libgl);
+            }
             _ = windows.user32.UnregisterClassW(classname, self.instance);
             self.parent.allocator.destroy(self);
+        }
+
+        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+            // std.debug.print("lookup {} with ", .{
+            //     std.mem.span(entry_point),
+            // });
+            if (self.libgl) |libgl| {
+                const T = fn (entry_point: [*:0]const u8) ?*c_void;
+
+                if (windows.kernel32.GetProcAddress(libgl, "wglGetProcAddress")) |wglGetProcAddress| {
+                    if (@ptrCast(T, wglGetProcAddress)(entry_point.ptr)) |ptr| {
+                        // std.debug.print("dynamic wglGetProcAddress: {}\n", .{ptr});
+                        return @ptrCast(*c_void, ptr);
+                    }
+                }
+
+                if (windows.kernel32.GetProcAddress(libgl, entry_point.ptr)) |ptr| {
+                    // std.debug.print("GetProcAddress: {}\n", .{ptr});
+                    return @ptrCast(*c_void, ptr);
+                }
+            }
+
+            if (windows.gdi32.wglGetProcAddress(entry_point.ptr)) |ptr| {
+                // std.debug.print("wglGetProcAddress: {}\n", .{ptr});
+                return ptr;
+            }
+
+            // std.debug.print("none.\n", .{});
+            return null;
         }
 
         fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(std.os.windows.WINAPI) ?*c_void {
@@ -305,7 +344,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                         break :blk Backend{ .software = render_context };
                     },
-                    .opengl => blk: {
+                    .opengl => |requested_gl| blk: {
                         const pfd = windows.gdi32.PIXELFORMATDESCRIPTOR{
                             .nVersion = 1,
                             .dwFlags = windows.gdi32.PFD_DRAW_TO_WINDOW | windows.gdi32.PFD_SUPPORT_OPENGL | windows.gdi32.PFD_DOUBLEBUFFER,
@@ -337,11 +376,78 @@ pub fn Platform(comptime Parent: anytype) type {
                         const hDC = windows.user32.GetDC(handle) orelse @panic("couldn't get DC!");
                         defer _ = windows.user32.ReleaseDC(handle, hDC);
 
-                        const letWindowsChooseThisPixelFormat = windows.gdi32.ChoosePixelFormat(hDC, &pfd);
-                        _ = windows.gdi32.SetPixelFormat(hDC, letWindowsChooseThisPixelFormat, &pfd);
+                        const dummy_pixel_format = windows.gdi32.ChoosePixelFormat(hDC, &pfd);
+                        _ = windows.gdi32.SetPixelFormat(hDC, dummy_pixel_format, &pfd);
 
-                        const gl_context = windows.gdi32.wglCreateContext(hDC) orelse @panic("Couldn't create OpenGL context");
-                        _ = windows.gdi32.wglMakeCurrent(hDC, gl_context);
+                        const dummy_gl_context = windows.gdi32.wglCreateContext(hDC) orelse @panic("Couldn't create OpenGL context");
+                        _ = windows.gdi32.wglMakeCurrent(hDC, dummy_gl_context);
+                        // defer _ = windows.gdi32.wglMakeCurrent(hDC, null);
+                        errdefer _ = windows.gdi32.wglDeleteContext(dummy_gl_context);
+
+                        const wglChoosePixelFormatARB = @ptrCast(
+                            fn (
+                                hdc: windows.user32.HDC,
+                                piAttribIList: ?[*:0]const c_int,
+                                pfAttribFList: ?[*:0]const f32,
+                                nMaxFormats: c_uint,
+                                piFormats: [*]c_int,
+                                nNumFormats: *c_uint,
+                            ) callconv(windows.WINAPI) windows.BOOL,
+                            windows.gdi32.wglGetProcAddress("wglChoosePixelFormatARB") orelse return error.InvalidOpenGL,
+                        );
+
+                        const wglCreateContextAttribsARB = @ptrCast(
+                            fn (
+                                hDC: windows.user32.HDC,
+                                hshareContext: ?windows.user32.HGLRC,
+                                attribList: ?[*:0]const c_int,
+                            ) callconv(windows.WINAPI) ?windows.user32.HGLRC,
+                            windows.gdi32.wglGetProcAddress("wglCreateContextAttribsARB") orelse return error.InvalidOpenGL,
+                        );
+
+                        const pf_attributes = [_:0]c_int{
+                            windows.gdi32.WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
+                            windows.gdi32.WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
+                            windows.gdi32.WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
+                            windows.gdi32.WGL_PIXEL_TYPE_ARB,     windows.gdi32.WGL_TYPE_RGBA_ARB,
+                            windows.gdi32.WGL_COLOR_BITS_ARB,     32,
+                            windows.gdi32.WGL_DEPTH_BITS_ARB,     24,
+                            windows.gdi32.WGL_STENCIL_BITS_ARB,   8,
+                            0, // End
+                        };
+
+                        var pixelFormat: c_int = undefined;
+                        var numFormats: c_uint = undefined;
+
+                        if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == windows.FALSE)
+                            return error.InvalidOpenGL;
+                        if (numFormats != 1)
+                            return error.InvalidOpenGL;
+
+                        if (dummy_pixel_format != pixelFormat)
+                            @panic("This case is not implemented yet: Recreation of the window is required here!");
+
+                        const ctx_attributes = [_:0]c_int{
+                            windows.gdi32.WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
+                            windows.gdi32.WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
+                            windows.gdi32.WGL_CONTEXT_FLAGS_ARB,         windows.gdi32.WGL_CONTEXT_DEBUG_BIT_ARB,
+                            windows.gdi32.WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) windows.gdi32.WGL_CONTEXT_CORE_PROFILE_BIT_ARB else windows.gdi32.WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                            0,
+                        };
+
+                        const gl_context = wglCreateContextAttribsARB(
+                            hDC,
+                            null,
+                            &ctx_attributes,
+                        ) orelse return error.InvalidOpenGL;
+                        errdefer _ = windows.gdi32.wglDeleteContext(gl_context);
+
+                        if (windows.gdi32.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
+                            return error.InvalidOpenGL;
+
+                        std.debug.print("{}\n", .{
+                            windows.gdi32.wglGetCurrentContext(),
+                        });
 
                         log.info("OpenGL Version:  {}", .{std.mem.span(gl.glGetString(gl.GL_VERSION))});
                         log.info("OpenGL Vendor:   {}", .{std.mem.span(gl.glGetString(gl.GL_VENDOR))});

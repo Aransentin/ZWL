@@ -19,8 +19,8 @@ pub const PlatformsEnabled = struct {
 };
 
 pub const OpenGlVersion = struct {
-    major: u32,
-    minor: u32,
+    major: u8,
+    minor: u8,
     core: bool = true, // enable core profile
 };
 
@@ -284,6 +284,14 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 self.windows[self.windows.len - 1] = window;
             }
             return window;
+        }
+
+        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+            return switch (self.type) {
+                .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.getOpenGlProcAddress(@ptrCast(*PlatformX11, self), entry_point),
+                .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.getOpenGlProcAddress(@ptrCast(*PlatformWayland, self), entry_point),
+                .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.getOpenGlProcAddress(@ptrCast(*PlatformWindows, self), entry_point),
+            };
         }
 
         pub const Event = union(EventType) {

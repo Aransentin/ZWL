@@ -247,6 +247,7 @@ pub extern "kernel32" fn WriteFile(
 
 pub extern "kernel32" fn WriteFileEx(hFile: HANDLE, lpBuffer: [*]const u8, nNumberOfBytesToWrite: DWORD, lpOverlapped: LPOVERLAPPED, lpCompletionRoutine: LPOVERLAPPED_COMPLETION_ROUTINE) callconv(WINAPI) BOOL;
 
+pub extern "kernel32" fn LoadLibraryA(lpLibFileName: [*:0]const u8) callconv(WINAPI) ?HMODULE;
 pub extern "kernel32" fn LoadLibraryW(lpLibFileName: [*:0]const u16) callconv(WINAPI) ?HMODULE;
 
 pub extern "kernel32" fn GetProcAddress(hModule: HMODULE, lpProcName: [*]const u8) callconv(WINAPI) ?FARPROC;
