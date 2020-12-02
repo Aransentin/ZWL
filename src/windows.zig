@@ -445,14 +445,6 @@ pub fn Platform(comptime Parent: anytype) type {
                         if (windows.gdi32.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
                             return error.InvalidOpenGL;
 
-                        std.debug.print("{}\n", .{
-                            windows.gdi32.wglGetCurrentContext(),
-                        });
-
-                        log.info("OpenGL Version:  {}", .{std.mem.span(gl.glGetString(gl.GL_VERSION))});
-                        log.info("OpenGL Vendor:   {}", .{std.mem.span(gl.glGetString(gl.GL_VENDOR))});
-                        log.info("OpenGL Renderer: {}", .{std.mem.span(gl.glGetString(gl.GL_RENDERER))});
-
                         break :blk Backend{ .opengl = gl_context };
                     },
                     else => .none,

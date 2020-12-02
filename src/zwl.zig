@@ -5,8 +5,10 @@ const Allocator = std.mem.Allocator;
 const x11 = @import("x11.zig");
 const wayland = @import("wayland.zig");
 const windows = @import("windows.zig");
+const xlib = @import("xlib.zig");
 
 pub const PlatformType = enum {
+    Xlib,
     X11,
     Wayland,
     Windows,
@@ -16,6 +18,8 @@ pub const PlatformsEnabled = struct {
     x11: bool = if (builtin.os.tag == .linux) true else false,
     wayland: bool = if (builtin.os.tag == .linux) true else false,
     windows: bool = if (builtin.os.tag == .windows) true else false,
+    /// The Xlib backend provides OpenGL features for all platforms. Fuck NVIDIA for us requiring to do this!
+    xlib: bool = false,
 };
 
 pub const OpenGlVersion = struct {
@@ -233,6 +237,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
         pub const PlatformX11 = x11.Platform(Self);
         pub const PlatformWayland = wayland.Platform(Self);
         pub const PlatformWindows = windows.Platform(Self);
+        pub const PlatformXlib = xlib.Platform(Self);
 
         type: PlatformType,
         allocator: *Allocator,
@@ -240,6 +245,9 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
         windows: if (settings.single_window) void else []*Window,
 
         pub fn init(allocator: *Allocator, options: PlatformOptions) !*Self {
+            if (settings.platforms_enabled.xlib) blk: {
+                return PlatformXlib.init(allocator, options) catch break :blk;
+            }
             if (settings.platforms_enabled.wayland) blk: {
                 return PlatformWayland.init(allocator, options) catch break :blk;
             }
@@ -249,7 +257,6 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             if (settings.platforms_enabled.windows) blk: {
                 return PlatformWindows.init(allocator, options) catch break :blk;
             }
-
             return error.NoPlatformAvailable;
         }
 
@@ -258,6 +265,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.deinit(@ptrCast(*PlatformX11, self)),
                 .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.deinit(@ptrCast(*PlatformWayland, self)),
                 .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.deinit(@ptrCast(*PlatformWindows, self)),
+                .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.deinit(@ptrCast(*PlatformXlib, self)),
             }
         }
 
@@ -266,6 +274,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.waitForEvent(@ptrCast(*PlatformX11, self)),
                 .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.waitForEvent(@ptrCast(*PlatformWayland, self)),
                 .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.waitForEvent(@ptrCast(*PlatformWindows, self)),
+                .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.waitForEvent(@ptrCast(*PlatformXlib, self)),
             };
         }
 
@@ -274,6 +283,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.createWindow(@ptrCast(*PlatformX11, self), options),
                 .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.createWindow(@ptrCast(*PlatformWayland, self), options),
                 .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.createWindow(@ptrCast(*PlatformWindows, self), options),
+                .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.createWindow(@ptrCast(*PlatformXlib, self), options),
             };
             errdefer window.deinit();
 
@@ -291,6 +301,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.getOpenGlProcAddress(@ptrCast(*PlatformX11, self), entry_point),
                 .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.getOpenGlProcAddress(@ptrCast(*PlatformWayland, self), entry_point),
                 .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.getOpenGlProcAddress(@ptrCast(*PlatformWindows, self), entry_point),
+                .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.getOpenGlProcAddress(@ptrCast(*PlatformXlib, self), entry_point),
             };
         }
 
@@ -327,6 +338,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.deinit(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.deinit(@ptrCast(*PlatformWayland.Window, self)),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.deinit(@ptrCast(*PlatformWindows.Window, self)),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.deinit(@ptrCast(*PlatformXlib.Window, self)),
                 };
             }
 
@@ -335,6 +347,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.configure(@ptrCast(*PlatformX11.Window, self), options),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.configure(@ptrCast(*PlatformWayland.Window, self), options),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.configure(@ptrCast(*PlatformWindows.Window, self), options),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.configure(@ptrCast(*PlatformXlib.Window, self), options),
                 };
             }
 
@@ -343,6 +356,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.getSize(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.getSize(@ptrCast(*PlatformWayland.Window, self)),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.getSize(@ptrCast(*PlatformWindows.Window, self)),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.getSize(@ptrCast(*PlatformXlib.Window, self)),
                 };
             }
 
@@ -351,6 +365,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => @panic("not implemented yet!"),
                     .Wayland => @panic("not implemented yet!"),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.present(@ptrCast(*PlatformWindows.Window, self)),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.present(@ptrCast(*PlatformXlib.Window, self)),
                 };
             }
 
@@ -359,6 +374,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.mapPixels(@ptrCast(*PlatformX11.Window, self)),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.mapPixels(@ptrCast(*PlatformWayland.Window, self)),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.mapPixels(@ptrCast(*PlatformWindows.Window, self)),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.mapPixels(@ptrCast(*PlatformXlib.Window, self)),
                 };
             }
 
@@ -367,6 +383,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                     .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.Window.submitPixels(@ptrCast(*PlatformX11.Window, self), updates),
                     .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.Window.submitPixels(@ptrCast(*PlatformWayland.Window, self), updates),
                     .Windows => if (!settings.platforms_enabled.windows) unreachable else PlatformWindows.Window.submitPixels(@ptrCast(*PlatformWindows.Window, self), updates),
+                    .Xlib => if (!settings.platforms_enabled.xlib) unreachable else PlatformXlib.Window.submitPixels(@ptrCast(*PlatformXlib.Window, self), updates),
                 };
             }
         };
