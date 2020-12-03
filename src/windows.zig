@@ -345,107 +345,111 @@ pub fn Platform(comptime Parent: anytype) type {
                         break :blk Backend{ .software = render_context };
                     },
                     .opengl => |requested_gl| blk: {
-                        const pfd = windows.gdi32.PIXELFORMATDESCRIPTOR{
-                            .nVersion = 1,
-                            .dwFlags = windows.gdi32.PFD_DRAW_TO_WINDOW | windows.gdi32.PFD_SUPPORT_OPENGL | windows.gdi32.PFD_DOUBLEBUFFER,
-                            .iPixelType = windows.gdi32.PFD_TYPE_RGBA,
-                            .cColorBits = 32,
-                            .cRedBits = 0,
-                            .cRedShift = 0,
-                            .cGreenBits = 0,
-                            .cGreenShift = 0,
-                            .cBlueBits = 0,
-                            .cBlueShift = 0,
-                            .cAlphaBits = 0,
-                            .cAlphaShift = 0,
-                            .cAccumBits = 0,
-                            .cAccumRedBits = 0,
-                            .cAccumGreenBits = 0,
-                            .cAccumBlueBits = 0,
-                            .cAccumAlphaBits = 0,
-                            .cDepthBits = 24,
-                            .cStencilBits = 8,
-                            .cAuxBuffers = 0,
-                            .iLayerType = windows.gdi32.PFD_MAIN_PLANE,
-                            .bReserved = 0,
-                            .dwLayerMask = 0,
-                            .dwVisibleMask = 0,
-                            .dwDamageMask = 0,
-                        };
+                        if (Parent.settings.backends_enabled.opengl) {
+                            const pfd = windows.gdi32.PIXELFORMATDESCRIPTOR{
+                                .nVersion = 1,
+                                .dwFlags = windows.gdi32.PFD_DRAW_TO_WINDOW | windows.gdi32.PFD_SUPPORT_OPENGL | windows.gdi32.PFD_DOUBLEBUFFER,
+                                .iPixelType = windows.gdi32.PFD_TYPE_RGBA,
+                                .cColorBits = 32,
+                                .cRedBits = 0,
+                                .cRedShift = 0,
+                                .cGreenBits = 0,
+                                .cGreenShift = 0,
+                                .cBlueBits = 0,
+                                .cBlueShift = 0,
+                                .cAlphaBits = 0,
+                                .cAlphaShift = 0,
+                                .cAccumBits = 0,
+                                .cAccumRedBits = 0,
+                                .cAccumGreenBits = 0,
+                                .cAccumBlueBits = 0,
+                                .cAccumAlphaBits = 0,
+                                .cDepthBits = 24,
+                                .cStencilBits = 8,
+                                .cAuxBuffers = 0,
+                                .iLayerType = windows.gdi32.PFD_MAIN_PLANE,
+                                .bReserved = 0,
+                                .dwLayerMask = 0,
+                                .dwVisibleMask = 0,
+                                .dwDamageMask = 0,
+                            };
 
-                        const hDC = windows.user32.GetDC(handle) orelse @panic("couldn't get DC!");
-                        defer _ = windows.user32.ReleaseDC(handle, hDC);
+                            const hDC = windows.user32.GetDC(handle) orelse @panic("couldn't get DC!");
+                            defer _ = windows.user32.ReleaseDC(handle, hDC);
 
-                        const dummy_pixel_format = windows.gdi32.ChoosePixelFormat(hDC, &pfd);
-                        _ = windows.gdi32.SetPixelFormat(hDC, dummy_pixel_format, &pfd);
+                            const dummy_pixel_format = windows.gdi32.ChoosePixelFormat(hDC, &pfd);
+                            _ = windows.gdi32.SetPixelFormat(hDC, dummy_pixel_format, &pfd);
 
-                        const dummy_gl_context = windows.gdi32.wglCreateContext(hDC) orelse @panic("Couldn't create OpenGL context");
-                        _ = windows.gdi32.wglMakeCurrent(hDC, dummy_gl_context);
-                        // defer _ = windows.gdi32.wglMakeCurrent(hDC, null);
-                        errdefer _ = windows.gdi32.wglDeleteContext(dummy_gl_context);
+                            const dummy_gl_context = windows.gdi32.wglCreateContext(hDC) orelse @panic("Couldn't create OpenGL context");
+                            _ = windows.gdi32.wglMakeCurrent(hDC, dummy_gl_context);
+                            // defer _ = windows.gdi32.wglMakeCurrent(hDC, null);
+                            errdefer _ = windows.gdi32.wglDeleteContext(dummy_gl_context);
 
-                        const wglChoosePixelFormatARB = @ptrCast(
-                            fn (
-                                hdc: windows.user32.HDC,
-                                piAttribIList: ?[*:0]const c_int,
-                                pfAttribFList: ?[*:0]const f32,
-                                nMaxFormats: c_uint,
-                                piFormats: [*]c_int,
-                                nNumFormats: *c_uint,
-                            ) callconv(windows.WINAPI) windows.BOOL,
-                            windows.gdi32.wglGetProcAddress("wglChoosePixelFormatARB") orelse return error.InvalidOpenGL,
-                        );
+                            const wglChoosePixelFormatARB = @ptrCast(
+                                fn (
+                                    hdc: windows.user32.HDC,
+                                    piAttribIList: ?[*:0]const c_int,
+                                    pfAttribFList: ?[*:0]const f32,
+                                    nMaxFormats: c_uint,
+                                    piFormats: [*]c_int,
+                                    nNumFormats: *c_uint,
+                                ) callconv(windows.WINAPI) windows.BOOL,
+                                windows.gdi32.wglGetProcAddress("wglChoosePixelFormatARB") orelse return error.InvalidOpenGL,
+                            );
 
-                        const wglCreateContextAttribsARB = @ptrCast(
-                            fn (
-                                hDC: windows.user32.HDC,
-                                hshareContext: ?windows.user32.HGLRC,
-                                attribList: ?[*:0]const c_int,
-                            ) callconv(windows.WINAPI) ?windows.user32.HGLRC,
-                            windows.gdi32.wglGetProcAddress("wglCreateContextAttribsARB") orelse return error.InvalidOpenGL,
-                        );
+                            const wglCreateContextAttribsARB = @ptrCast(
+                                fn (
+                                    hDC: windows.user32.HDC,
+                                    hshareContext: ?windows.user32.HGLRC,
+                                    attribList: ?[*:0]const c_int,
+                                ) callconv(windows.WINAPI) ?windows.user32.HGLRC,
+                                windows.gdi32.wglGetProcAddress("wglCreateContextAttribsARB") orelse return error.InvalidOpenGL,
+                            );
 
-                        const pf_attributes = [_:0]c_int{
-                            windows.gdi32.WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
-                            windows.gdi32.WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
-                            windows.gdi32.WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
-                            windows.gdi32.WGL_PIXEL_TYPE_ARB,     windows.gdi32.WGL_TYPE_RGBA_ARB,
-                            windows.gdi32.WGL_COLOR_BITS_ARB,     32,
-                            windows.gdi32.WGL_DEPTH_BITS_ARB,     24,
-                            windows.gdi32.WGL_STENCIL_BITS_ARB,   8,
-                            0, // End
-                        };
+                            const pf_attributes = [_:0]c_int{
+                                windows.gdi32.WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
+                                windows.gdi32.WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
+                                windows.gdi32.WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
+                                windows.gdi32.WGL_PIXEL_TYPE_ARB,     windows.gdi32.WGL_TYPE_RGBA_ARB,
+                                windows.gdi32.WGL_COLOR_BITS_ARB,     32,
+                                windows.gdi32.WGL_DEPTH_BITS_ARB,     24,
+                                windows.gdi32.WGL_STENCIL_BITS_ARB,   8,
+                                0, // End
+                            };
 
-                        var pixelFormat: c_int = undefined;
-                        var numFormats: c_uint = undefined;
+                            var pixelFormat: c_int = undefined;
+                            var numFormats: c_uint = undefined;
 
-                        if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == windows.FALSE)
-                            return error.InvalidOpenGL;
-                        if (numFormats != 1)
-                            return error.InvalidOpenGL;
+                            if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == windows.FALSE)
+                                return error.InvalidOpenGL;
+                            if (numFormats != 1)
+                                return error.InvalidOpenGL;
 
-                        if (dummy_pixel_format != pixelFormat)
-                            @panic("This case is not implemented yet: Recreation of the window is required here!");
+                            if (dummy_pixel_format != pixelFormat)
+                                @panic("This case is not implemented yet: Recreation of the window is required here!");
 
-                        const ctx_attributes = [_:0]c_int{
-                            windows.gdi32.WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
-                            windows.gdi32.WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
-                            windows.gdi32.WGL_CONTEXT_FLAGS_ARB,         windows.gdi32.WGL_CONTEXT_DEBUG_BIT_ARB,
-                            windows.gdi32.WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) windows.gdi32.WGL_CONTEXT_CORE_PROFILE_BIT_ARB else windows.gdi32.WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
-                            0,
-                        };
+                            const ctx_attributes = [_:0]c_int{
+                                windows.gdi32.WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
+                                windows.gdi32.WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
+                                windows.gdi32.WGL_CONTEXT_FLAGS_ARB,         windows.gdi32.WGL_CONTEXT_DEBUG_BIT_ARB,
+                                windows.gdi32.WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) windows.gdi32.WGL_CONTEXT_CORE_PROFILE_BIT_ARB else windows.gdi32.WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                                0,
+                            };
 
-                        const gl_context = wglCreateContextAttribsARB(
-                            hDC,
-                            null,
-                            &ctx_attributes,
-                        ) orelse return error.InvalidOpenGL;
-                        errdefer _ = windows.gdi32.wglDeleteContext(gl_context);
+                            const gl_context = wglCreateContextAttribsARB(
+                                hDC,
+                                null,
+                                &ctx_attributes,
+                            ) orelse return error.InvalidOpenGL;
+                            errdefer _ = windows.gdi32.wglDeleteContext(gl_context);
 
-                        if (windows.gdi32.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
-                            return error.InvalidOpenGL;
+                            if (windows.gdi32.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
+                                return error.InvalidOpenGL;
 
-                        break :blk Backend{ .opengl = gl_context };
+                            break :blk Backend{ .opengl = gl_context };
+                        } else {
+                            @panic("OpenGL support not enabled");
+                        }
                     },
                     else => .none,
                 };
@@ -459,11 +463,15 @@ pub fn Platform(comptime Parent: anytype) type {
                         _ = windows.gdi32.DeleteDC(render_context.memory_dc);
                     },
                     .opengl => |gl_context| {
-                        const hDC = windows.user32.GetDC(self.handle) orelse @panic("couldn't get DC!");
-                        defer _ = windows.user32.ReleaseDC(self.handle, hDC);
+                        if (Parent.settings.backends_enabled.opengl) {
+                            const hDC = windows.user32.GetDC(self.handle) orelse @panic("couldn't get DC!");
+                            defer _ = windows.user32.ReleaseDC(self.handle, hDC);
 
-                        _ = windows.gdi32.wglMakeCurrent(hDC, gl_context);
-                        _ = windows.gdi32.wglDeleteContext(gl_context);
+                            _ = windows.gdi32.wglMakeCurrent(hDC, gl_context);
+                            _ = windows.gdi32.wglDeleteContext(gl_context);
+                        } else {
+                            unreachable;
+                        }
                     },
                 }
 
