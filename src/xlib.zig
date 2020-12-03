@@ -133,37 +133,98 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub fn waitForEvent(self: *Self) !Parent.Event {
-            var xev = std.mem.zeroes(c.XEvent);
+            while (true) {
+                var xev = std.mem.zeroes(c.XEvent);
 
-            _ = c.XNextEvent(self.display, &xev);
+                _ = c.XNextEvent(self.display, &xev);
 
-            switch (xev.type) {
-                c.Expose => {
-                    //const ev = @ptrCast(*const Expose, @alignCast(4, evdata.ptr));
-                    //if (self.getWindowById(ev.window)) |window| {
-                    // TODO: Not greater than underlying buffer...?
-                    return Parent.Event{
-                        .WindowVBlank = undefined,
-                    };
-                    // }
-                },
-                else => return Parent.Event{
-                    .WindowVBlank = undefined,
-                },
+                switch (xev.type) {
+                    c.Expose => {
+                        const ev = xev.xexpose;
+                        if (self.getWindowById(ev.window)) |window| {
+                            _ = c.XSendEvent(
+                                self.display,
+                                ev.window,
+                                c.False,
+                                c.ExposureMask,
+                                &c.XEvent{
+                                    .xexpose = .{
+                                        .type = c.Expose,
+                                        .serial = 0,
+                                        .send_event = c.False,
+                                        .display = self.display,
+                                        .window = ev.window,
+                                        .x = 0,
+                                        .y = 0,
+                                        .width = window.width,
+                                        .height = window.height,
+                                        .count = 0,
+                                    },
+                                },
+                            );
+
+                            return Parent.Event{
+                                .WindowDamaged = .{
+                                    .window = &window.parent,
+                                    .x = @intCast(u16, ev.x),
+                                    .y = @intCast(u16, ev.y),
+                                    .w = @intCast(u16, ev.width),
+                                    .h = @intCast(u16, ev.height),
+                                },
+                            };
+                        }
+                    },
+                    c.KeyPress,
+                    c.KeyRelease,
+                    => {
+                        const ev = xev.xkey;
+                        if (self.getWindowById(ev.window)) |window| {
+                            var kev = zwl.KeyEvent{
+                                .scancode = @intCast(u8, ev.keycode - 8),
+                            };
+
+                            return switch (ev.type) {
+                                c.KeyPress => Parent.Event{ .KeyDown = kev },
+                                c.KeyRelease => Parent.Event{ .KeyUp = kev },
+                                else => unreachable,
+                            };
+                        }
+                    },
+                    c.ButtonPress,
+                    c.ButtonRelease,
+                    => {
+                        const ev = xev.xbutton;
+                        if (self.getWindowById(ev.window)) |window| {
+                            var bev = zwl.MouseButtonEvent{
+                                .x = @intCast(i16, ev.x),
+                                .y = @intCast(i16, ev.y),
+                                .button = @intToEnum(zwl.MouseButton, @intCast(u8, ev.button)),
+                            };
+
+                            return switch (ev.type) {
+                                c.ButtonPress => Parent.Event{ .MouseButtonDown = bev },
+                                c.ButtonRelease => Parent.Event{ .MouseButtonUp = bev },
+                                else => unreachable,
+                            };
+                        }
+                    },
+                    c.MotionNotify => {
+                        const ev = xev.xmotion;
+                        if (self.getWindowById(ev.window)) |window| {
+                            return Parent.Event{
+                                .MouseMotion = zwl.MouseMotionEvent{
+                                    .x = @intCast(i16, ev.x),
+                                    .y = @intCast(i16, ev.y),
+                                },
+                            };
+                        }
+                    },
+                    else => {
+                        log.info("unhandled event {}", .{xev.type});
+                        return error.Failed;
+                    },
+                }
             }
-
-            // if (xev.type == Expose) {
-            //     XGetWindowAttributes(dpy, win, &gwa);
-            //     glViewport(0, 0, gwa.width, gwa.height);
-            //     DrawAQuad();
-            //     glXSwapBuffers(dpy, win);
-            // } else if (xev.type == KeyPress) {
-            //     glXMakeCurrent(dpy, None, NULL);
-            //     glXDestroyContext(dpy, glc);
-            //     XDestroyWindow(dpy, win);
-            //     XCloseDisplay(dpy);
-            //     exit(0);
-            // }
         }
 
         pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
@@ -177,6 +238,21 @@ pub fn Platform(comptime Parent: anytype) type {
             try window.init(self, options);
 
             return @ptrCast(*Parent.Window, window);
+        }
+
+        fn getWindowById(self: *Self, id: c.Window) ?*Window {
+            if (Parent.settings.single_window) {
+                const win = @ptrCast(*Window, self.parent.window);
+                if (id == win.window)
+                    return win;
+            } else {
+                return for (self.parent.windows) |pwin| {
+                    const win = @ptrCast(*Window, pwin);
+                    if (win.window == id)
+                        return win;
+                } else null;
+            }
+            return null;
         }
 
         pub const Window = struct {
@@ -284,9 +360,13 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 var swa = std.mem.zeroes(c.XSetWindowAttributes);
                 swa.colormap = colormap;
-                swa.event_mask = c.ExposureMask | c.KeyPressMask;
+                swa.event_mask = 0;
                 swa.background_pixmap = c.None;
                 swa.border_pixel = 0;
+
+                swa.event_mask |= if (options.track_damage == true) c.ExposureMask else 0;
+                swa.event_mask |= if (options.track_mouse == true) c.ButtonPressMask | c.ButtonReleaseMask | c.PointerMotionMask else 0;
+                swa.event_mask |= if (options.track_keyboard == true) c.KeyPressMask | c.KeyReleaseMask else 0;
 
                 self.window = c.XCreateWindow(
                     parent.display,
