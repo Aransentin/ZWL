@@ -10,7 +10,7 @@ const Platform = zwl.Platform(.{
     },
     .remote = true,
     .platforms_enabled = .{
-        .wayland = false, // TODO: change this to true when wayland backend is working
+        .wayland = true,
     },
 });
 
