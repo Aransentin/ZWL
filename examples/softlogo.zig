@@ -3,9 +3,15 @@ const zwl = @import("zwl");
 
 const Platform = zwl.Platform(.{
     .single_window = true,
-    .render_software = true,
+    .backends_enabled = .{
+        .software = true,
+        .opengl = false,
+        .vulkan = false,
+    },
     .remote = true,
-    .platforms_enabled = .{},
+    .platforms_enabled = .{
+        .wayland = false, // TODO: change this to true when wayland backend is working
+    },
 });
 
 var stripes: [32][4]u8 = undefined;
@@ -25,7 +31,16 @@ pub fn main() !void {
     }
     _ = try std.fs.cwd().readFile("logo.bgra", std.mem.asBytes(&logo));
 
-    var window = try platform.createWindow(.{ .title = "Softlogo", .width = 512, .height = 512, .resizeable = false, .visible = true, .decorations = true, .track_damage = false });
+    var window = try platform.createWindow(.{
+        .title = "Softlogo",
+        .width = 512,
+        .height = 512,
+        .resizeable = false,
+        .visible = true,
+        .decorations = true,
+        .track_damage = false,
+        .backend = .software,
+    });
     defer window.deinit();
 
     {
