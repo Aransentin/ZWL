@@ -128,11 +128,12 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub fn deinit(self: *Self) void {
+            _ = c.XFreeColormap(self.display, self.colormap);
             _ = c.XCloseDisplay(self.display);
             self.parent.allocator.destroy(self);
         }
 
-        pub fn waitForEvent(self: *Self) !Parent.Event {
+        pub fn waitForEvent(self: *Self) error{}!Parent.Event {
             while (true) {
                 var xev = std.mem.zeroes(c.XEvent);
 
@@ -219,9 +220,28 @@ pub fn Platform(comptime Parent: anytype) type {
                             };
                         }
                     },
+                    c.CirculateNotify, c.CreateNotify, c.GravityNotify, c.MapNotify, c.ReparentNotify, c.UnmapNotify => {
+                        // Whatever
+                    },
+                    c.ConfigureNotify => {
+                        const ev = xev.xconfigure;
+                        if (self.getWindowById(ev.window)) |window| {
+                            if (window.width != ev.width or window.height != ev.height) {
+                                window.width = @intCast(u16, ev.width);
+                                window.height = @intCast(u16, ev.height);
+                                return Parent.Event{ .WindowResized = @ptrCast(*Parent.Window, window) };
+                            }
+                        }
+                    },
+                    c.DestroyNotify => {
+                        const ev = xev.xdestroywindow;
+                        if (self.getWindowById(ev.window)) |window| {
+                            window.window = 0;
+                            return Parent.Event{ .WindowDestroyed = @ptrCast(*Parent.Window, window) };
+                        }
+                    },
                     else => {
                         log.info("unhandled event {}", .{xev.type});
-                        return error.Failed;
                     },
                 }
             }
@@ -344,7 +364,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 var bestFbc = fbc[@intCast(usize, best_fbc)];
 
-                // // Get a visual
+                // Get a visual
                 const vi: *c.XVisualInfo = c.glXGetVisualFromFBConfig(
                     parent.display,
                     bestFbc,
@@ -360,7 +380,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 var swa = std.mem.zeroes(c.XSetWindowAttributes);
                 swa.colormap = colormap;
-                swa.event_mask = 0;
+                swa.event_mask = c.StructureNotifyMask;
                 swa.background_pixmap = c.None;
                 swa.border_pixel = 0;
 
@@ -423,7 +443,17 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
             }
             pub fn deinit(self: *Window) void {
-                // Do
+                var platform = @ptrCast(*Self, self.parent.platform);
+
+                if (self.glx_context) |glx_context| {
+                    c.glXDestroyContext(platform.display, glx_context);
+                }
+
+                if (self.window != 0) {
+                    _ = c.XDestroyWindow(platform.display, self.window);
+                }
+
+                platform.parent.allocator.destroy(self);
             }
 
             pub fn present(self: *Window) void {
