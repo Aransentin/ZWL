@@ -10,7 +10,7 @@ const Platform = zwl.Platform(.{
     },
     .remote = true,
     .platforms_enabled = .{
-        .wayland = true,
+        .wayland = (std.builtin.os.tag != .windows),
     },
 });
 
