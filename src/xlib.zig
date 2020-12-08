@@ -9,7 +9,6 @@ const c = @cImport({
     @cInclude("X11/Xlib.h");
     @cInclude("GL/gl.h");
     @cInclude("GL/glx.h");
-    @cInclude("GL/glu.h");
 });
 
 inline fn RootWindow(dpy: *c.Display, screen: c_int) c.Window {
