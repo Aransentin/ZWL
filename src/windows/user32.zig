@@ -8,7 +8,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 const windows = @import("../windows.zig").windows;
-const unexpectedError = windows.unexpectedError;
+const unexpectedError = std.os.windows.unexpectedError;
 const GetLastError = windows.kernel32.GetLastError;
 const SetLastError = windows.kernel32.SetLastError;
 
@@ -309,7 +309,7 @@ pub fn getMessageA(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: 
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -324,7 +324,7 @@ pub fn getMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: 
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -340,7 +340,7 @@ pub fn peekMessageA(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax:
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -355,7 +355,7 @@ pub fn peekMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax:
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -444,7 +444,7 @@ pub fn registerClassExA(window_class: *const WNDCLASSEXA) !ATOM {
     switch (GetLastError()) {
         .CLASS_ALREADY_EXISTS => return error.AlreadyExists,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -458,7 +458,7 @@ pub fn registerClassExW(window_class: *const WNDCLASSEXW) !ATOM {
         .CLASS_ALREADY_EXISTS => return error.AlreadyExists,
         .CALL_NOT_IMPLEMENTED => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -467,7 +467,7 @@ pub fn unregisterClassA(lpClassName: [*:0]const u8, hInstance: HINSTANCE) !void 
     if (UnregisterClassA(lpClassName, hInstance) == 0) {
         switch (GetLastError()) {
             .CLASS_DOES_NOT_EXIST => return error.ClassDoesNotExist,
-            else => |err| return windows.unexpectedError(err),
+            else => |err| return unexpectedError(err),
         }
     }
 }
@@ -479,7 +479,7 @@ pub fn unregisterClassW(lpClassName: [*:0]const u16, hInstance: HINSTANCE) !void
     if (function(lpClassName, hInstance) == 0) {
         switch (GetLastError()) {
             .CLASS_DOES_NOT_EXIST => return error.ClassDoesNotExist,
-            else => |err| return windows.unexpectedError(err),
+            else => |err| return unexpectedError(err),
         }
     }
 }
@@ -545,7 +545,7 @@ pub fn createWindowExA(dwExStyle: u32, lpClassName: [*:0]const u8, lpWindowName:
     switch (GetLastError()) {
         .CLASS_DOES_NOT_EXIST => return error.ClassDoesNotExist,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -559,7 +559,7 @@ pub fn createWindowExW(dwExStyle: u32, lpClassName: [*:0]const u16, lpWindowName
     switch (GetLastError()) {
         .CLASS_DOES_NOT_EXIST => return error.ClassDoesNotExist,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -569,7 +569,7 @@ pub fn destroyWindow(hWnd: HWND) !void {
         switch (GetLastError()) {
             .INVALID_WINDOW_HANDLE => unreachable,
             .INVALID_PARAMETER => unreachable,
-            else => |err| return windows.unexpectedError(err),
+            else => |err| return unexpectedError(err),
         }
     }
 }
@@ -601,7 +601,7 @@ pub fn updateWindow(hWnd: HWND) !void {
         switch (GetLastError()) {
             .INVALID_WINDOW_HANDLE => unreachable,
             .INVALID_PARAMETER => unreachable,
-            else => |err| return windows.unexpectedError(err),
+            else => |err| return unexpectedError(err),
         }
     }
 }
@@ -613,7 +613,7 @@ pub fn adjustWindowRectEx(lpRect: *RECT, dwStyle: u32, bMenu: bool, dwExStyle: u
     if (AdjustWindowRectEx(lpRect, dwStyle, bMenu, dwExStyle) == 0) {
         switch (GetLastError()) {
             .INVALID_PARAMETER => unreachable,
-            else => |err| return windows.unexpectedError(err),
+            else => |err| return unexpectedError(err),
         }
     }
 }
@@ -635,7 +635,7 @@ pub fn getWindowLongA(hWnd: HWND, nIndex: i32) !i32 {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -651,7 +651,7 @@ pub fn getWindowLongW(hWnd: HWND, nIndex: i32) !i32 {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -668,7 +668,7 @@ pub fn getWindowLongPtrA(hWnd: HWND, nIndex: i32) !isize {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -685,7 +685,7 @@ pub fn getWindowLongPtrW(hWnd: HWND, nIndex: i32) !isize {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -702,7 +702,7 @@ pub fn setWindowLongA(hWnd: HWND, nIndex: i32, dwNewLong: i32) !i32 {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -719,7 +719,7 @@ pub fn setWindowLongW(hWnd: HWND, nIndex: i32, dwNewLong: i32) !i32 {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -737,7 +737,7 @@ pub fn setWindowLongPtrA(hWnd: HWND, nIndex: i32, dwNewLong: isize) !isize {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -755,7 +755,7 @@ pub fn setWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: isize) !isize {
         .SUCCESS => return 0,
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -841,7 +841,7 @@ pub fn messageBoxA(hWnd: ?HWND, lpText: [*:0]const u8, lpCaption: [*:0]const u8,
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
@@ -854,7 +854,7 @@ pub fn messageBoxW(hWnd: ?HWND, lpText: [*:0]const u16, lpCaption: [*:0]const u1
     switch (GetLastError()) {
         .INVALID_WINDOW_HANDLE => unreachable,
         .INVALID_PARAMETER => unreachable,
-        else => |err| return windows.unexpectedError(err),
+        else => |err| return unexpectedError(err),
     }
 }
 
