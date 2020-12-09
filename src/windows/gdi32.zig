@@ -29,7 +29,7 @@ pub const DIBColors = extern enum {
 };
 
 pub const BITMAPINFOHEADER = extern struct {
-    biSize: DWORD = @SizeOf(@This()),
+    biSize: DWORD = @sizeOf(@This()),
     biWidth: LONG,
     biHeight: LONG,
     biPlanes: WORD,
