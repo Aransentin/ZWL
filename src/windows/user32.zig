@@ -882,3 +882,14 @@ pub extern "user32" fn InvalidateRect(
     lpRect: ?*const RECT, // rectangle coordinates
     bErase: BOOL, // erase state
 ) callconv(WINAPI) BOOL;
+
+pub extern "user32" fn GetClientRect(hWnd: ?HWND, lpRect: *RECT) callconv(WINAPI) BOOL;
+pub fn getClientRect(hWnd: ?HWND, lpRect: *RECT) !BOOL {
+    const value = GetClientRect(hWnd, lpRect);
+    if (value != 0) return value;
+    switch (GetLastError()) {
+        .INVALID_WINDOW_HANDLE => unreachable,
+        .INVALID_PARAMETER => unreachable,
+        else => |err| return unexpectedError(err),
+    }
+}
