@@ -50,8 +50,6 @@ pub fn Platform(comptime Parent: anytype) type {
 
         display: *c.Display,
         root_window: c_ulong,
-        visual: *c.XVisualInfo,
-        colormap: c.Colormap,
 
         glxCreateContextAttribsARB: ?GlXCreateContextAttribsARB,
 
@@ -63,20 +61,6 @@ pub fn Platform(comptime Parent: anytype) type {
             errdefer _ = c.XCloseDisplay(display);
 
             var root = DefaultRootWindow(display); //orelse return error.FailedToGetRootWindow;
-
-            var attributes = [_]c_int{
-                c.GLX_RGBA,
-                c.GLX_DEPTH_SIZE,
-                24,
-                c.GLX_DOUBLEBUFFER,
-                c.None,
-            };
-
-            var visual = c.glXChooseVisual(display, 0, &attributes) orelse return error.FailedToGetVisual;
-
-            var colormap = c.XCreateColormap(display, root, visual.*.visual, c.AllocNone);
-            if (colormap == 0)
-                return error.FailedToCreateColormap;
 
             var createContextFn: ?GlXCreateContextAttribsARB = null;
             if (Parent.settings.backends_enabled.opengl) {
@@ -116,8 +100,6 @@ pub fn Platform(comptime Parent: anytype) type {
                 },
                 .display = display,
                 .root_window = root,
-                .visual = visual,
-                .colormap = colormap,
 
                 .glxCreateContextAttribsARB = createContextFn,
             };
@@ -127,7 +109,6 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub fn deinit(self: *Self) void {
-            _ = c.XFreeColormap(self.display, self.colormap);
             _ = c.XCloseDisplay(self.display);
             self.parent.allocator.destroy(self);
         }
