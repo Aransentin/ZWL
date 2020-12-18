@@ -35,6 +35,21 @@ pub const MSG = extern struct {
     lPrivate: DWORD,
 };
 
+pub const CREATESTRUCTW = extern struct {
+    lpCreateParams: LPVOID,
+    hInstance: HINSTANCE,
+    hMenu: ?HMENU,
+    hwndParent: ?HWND,
+    cy: c_int,
+    cx: c_int,
+    y: c_int,
+    x: c_int,
+    style: LONG,
+    lpszName: LPCWSTR,
+    lpszClass: LPCWSTR,
+    dwExStyle: DWORD,
+};
+
 pub const WM = extern enum(u32) {
     pub const WININICHANGE = @This().SETTINGCHANGE;
 
