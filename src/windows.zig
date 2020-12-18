@@ -119,6 +119,14 @@ pub fn Platform(comptime Parent: anytype) type {
                         log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
                     }
                 },
+                .CREATE => {
+                    const create_info_opt = @ptrCast(?*windows.user32.CREATESTRUCTW, @alignCast(@alignOf(windows.user32.CREATESTRUCTW), lParam));
+                    if (create_info_opt) |create_info| {
+                        _ = windows.user32.SetWindowLongPtrW(hwnd, 0, @bitCast(isize, @ptrToInt(create_info.lpCreateParams)));
+                    } else {
+                        return @intToPtr(windows.LRESULT, @bitCast(usize, @as(isize, -1)));
+                    }
+                },
                 .SIZE => {
                     var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.user32.GetWindowLongPtrW(hwnd, 0)));
                     if (window_opt) |window| {
@@ -321,11 +329,10 @@ pub fn Platform(comptime Parent: anytype) type {
                 const w = rect.right - rect.left;
                 const h = rect.bottom - rect.top;
 
-                const handle = windows.user32.CreateWindowExW(0, classname, title, style, x, y, w, h, null, null, platform.instance, null) orelse
+                const handle = windows.user32.CreateWindowExW(0, classname, title, style, x, y, w, h, null, null, platform.instance, self) orelse
                     return error.CreateWindowFailed;
 
                 self.handle = handle;
-                _ = windows.user32.SetWindowLongPtrW(handle, 0, @bitCast(isize, @ptrToInt(self)));
 
                 self.backend = switch (options.backend) {
                     .software => blk: {
