@@ -24,7 +24,7 @@ pub fn main() !void {
 
     // init logo, stripes
     var seed_bytes: [@sizeOf(u64)]u8 = undefined;
-    std.crypto.randomBytes(seed_bytes[0..]) catch unreachable;
+    std.crypto.random.bytes(seed_bytes[0..]);
     var rng = std.rand.DefaultPrng.init(std.mem.readIntNative(u64, &seed_bytes));
     for (stripes) |*stripe| {
         stripe.* = .{ @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, 0 };
