@@ -254,16 +254,18 @@ pub fn Platform(comptime Parent: anytype) type {
                 } else null;
             }
             return null;
-        }
+    }
+
+        const WindowGLData = struct {
+            glx_context: c.GLXContext,
+        };
 
         pub const Window = struct {
             parent: Parent.Window,
             width: u16,
             height: u16,
-
-            glx_context: c.GLXContext,
-
             window: c.Window,
+            gl: if (Parent.settings.backends_enabled.opengl) ?WindowGLData else void,
 
             pub fn init(self: *Window, parent: *Self, options: zwl.WindowOptions) !void {
                 self.* = .{
@@ -272,14 +274,48 @@ pub fn Platform(comptime Parent: anytype) type {
                     },
                     .width = options.width orelse 800,
                     .height = options.height orelse 600,
-                    .glx_context = null,
                     .window = undefined,
+                    .gl = if (Parent.settings.backends_enabled.opengl) null else {},
                 };
 
-                var visual: ?*c.Visual = null;
-                var depth: c_uint = 0;
-                var parent_window = DefaultRootWindow(parent.display);
+                switch (options.backend) {
+                    .opengl => |version| {
+                        try self.initGL(parent, options);
+                        return;
+                    },
+                    .none => {},
+                    else => return error.NotImplementedYet,
+                }
+
                 var swa = std.mem.zeroes(c.XSetWindowAttributes);
+                swa.event_mask = c.StructureNotifyMask;
+                swa.event_mask |= if (options.track_damage == true) c.ExposureMask else 0;
+                swa.event_mask |= if (options.track_mouse == true) c.ButtonPressMask | c.ButtonReleaseMask | c.PointerMotionMask else 0;
+                swa.event_mask |= if (options.track_keyboard == true) c.KeyPressMask | c.KeyReleaseMask else 0;
+
+                self.window = c.XCreateWindow(
+                    parent.display,
+                    DefaultRootWindow(parent.display),
+                    0,
+                    0,
+                    self.width,
+                    self.height,
+                    0,
+                    c.CopyFromParent,
+                    c.InputOutput,
+                    c.CopyFromParent,
+                    c.CWEventMask,
+                    &swa,
+                );
+
+                _ = c.XMapWindow(parent.display, self.window);
+                _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
+            }
+
+            fn initGL(self: *Window, parent: *Self, options: zwl.WindowOptions) !void {
+                if (!Parent.settings.backends_enabled.opengl) {
+                    return error.PlatformNotEnabled;
+                }
 
                 const visual_attribs = [_:0]c_int{
                     c.GLX_X_RENDERABLE,  c.True,
@@ -310,9 +346,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 // Pick the FB config/visual with the most samples per pixel
 
                 var best_fbc: c_int = -1;
-                var worst_fbc: c_int = -1;
                 var best_num_samp: c_int = -1;
-                var worst_num_samp: c_int = 999;
 
                 var i: c_int = 0;
                 while (i < fbcount) : (i += 1) {
@@ -342,10 +376,6 @@ pub fn Platform(comptime Parent: anytype) type {
                         best_fbc = i;
                         best_num_samp = samples;
                     }
-                    if (worst_fbc < 0 or samp_buf == 0 or samples < worst_num_samp) {
-                        worst_fbc = i;
-                        worst_num_samp = samples;
-                    }
                 }
 
                 var bestFbc = fbc[@intCast(usize, best_fbc)];
@@ -364,6 +394,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     c.AllocNone,
                 );
 
+                var swa = std.mem.zeroes(c.XSetWindowAttributes);
                 swa.colormap = colormap;
                 swa.event_mask = c.StructureNotifyMask;
                 swa.background_pixmap = c.None;
@@ -393,45 +424,38 @@ pub fn Platform(comptime Parent: anytype) type {
                 _ = c.XMapWindow(parent.display, self.window);
                 _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
 
-                switch (options.backend) {
-                    .none => {},
+                const version = options.backend.opengl;
 
-                    .opengl => |requested_info| {
-                        // self.glx_context = c.glXCreateContext(
-                        //     parent.display,
-                        //     parent.visual,
-                        //     null,
-                        //     c.GL_TRUE,
-                        // ) orelse return error.InvalidOpenGL;
-                        self.glx_context = parent.gl.glxCreateContextAttribsARB(
-                            parent.display,
-                            bestFbc,
-                            null,
-                            c.True,
-                            &[_:0]c_int{
-                                c.GLX_CONTEXT_MAJOR_VERSION_ARB, requested_info.major,
-                                c.GLX_CONTEXT_MINOR_VERSION_ARB, requested_info.minor,
-                                c.GLX_CONTEXT_FLAGS_ARB,         c.GLX_CONTEXT_DEBUG_BIT_ARB | c.GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-                                c.GLX_CONTEXT_PROFILE_MASK_ARB,  if (requested_info.core) c.GLX_CONTEXT_CORE_PROFILE_BIT_ARB else c.GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
-                                0,
-                            },
-                        ) orelse return error.InvalidOpenGL;
+                self.gl = WindowGLData{
+                    .glx_context = parent.gl.glxCreateContextAttribsARB(
+                        parent.display,
+                        bestFbc,
+                        null,
+                        c.True,
+                        &[_:0]c_int{
+                            c.GLX_CONTEXT_MAJOR_VERSION_ARB, version.major,
+                            c.GLX_CONTEXT_MINOR_VERSION_ARB, version.minor,
+                            c.GLX_CONTEXT_FLAGS_ARB,         c.GLX_CONTEXT_DEBUG_BIT_ARB | c.GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                            c.GLX_CONTEXT_PROFILE_MASK_ARB,  if (version.core) c.GLX_CONTEXT_CORE_PROFILE_BIT_ARB else c.GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                            0,
+                        },
+                    ) orelse return error.InvalidOpenGL,
+                };
 
-                        _ = c.glXMakeCurrent(
-                            parent.display,
-                            self.window,
-                            self.glx_context,
-                        );
-                    },
-
-                    else => return error.NotImplementedYet,
-                }
+                _ = c.glXMakeCurrent(
+                    parent.display,
+                    self.window,
+                    self.gl.?.glx_context,
+                );
             }
+
             pub fn deinit(self: *Window) void {
                 var platform = @ptrCast(*Self, self.parent.platform);
 
-                if (self.glx_context) |glx_context| {
-                    c.glXDestroyContext(platform.display, glx_context);
+                if (Parent.settings.backends_enabled.opengl) {
+                    if (self.gl) |gl| {
+                        c.glXDestroyContext(platform.display, gl.glx_context);
+                    }
                 }
 
                 if (self.window != 0) {
