@@ -46,12 +46,15 @@ pub fn Platform(comptime Parent: anytype) type {
             attrib_list: [*:0]const c_int,
         ) c.GLXContext;
 
+        const PlatformGLData = struct {
+            glxCreateContextAttribsARB: GlXCreateContextAttribsARB,
+        };
+
         parent: Parent,
 
         display: *c.Display,
         root_window: c_ulong,
-
-        glxCreateContextAttribsARB: ?GlXCreateContextAttribsARB,
+        gl: if (Parent.settings.backends_enabled.opengl) PlatformGLData else void,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
             var self = try allocator.create(Self);
@@ -62,9 +65,20 @@ pub fn Platform(comptime Parent: anytype) type {
 
             var root = DefaultRootWindow(display); //orelse return error.FailedToGetRootWindow;
 
-            var createContextFn: ?GlXCreateContextAttribsARB = null;
+            self.* = .{
+                .parent = .{
+                    .allocator = allocator,
+                    .type = .Xlib,
+                    .window = undefined,
+                    .windows = if (!Parent.settings.single_window) &[0]*Parent.Window{} else undefined,
+                },
+                .display = display,
+                .root_window = root,
+                .gl = undefined,
+            };
+
             if (Parent.settings.backends_enabled.opengl) {
-                createContextFn = @ptrCast(
+                self.gl.glxCreateContextAttribsARB = @ptrCast(
                     GlXCreateContextAttribsARB,
                     c.glXGetProcAddress("glXCreateContextAttribsARB") orelse return error.InvalidOpenGL,
                 );
@@ -90,19 +104,6 @@ pub fn Platform(comptime Parent: anytype) type {
                 if (!has_ext)
                     return error.UnsupportedGlxVersion;
             }
-
-            self.* = .{
-                .parent = .{
-                    .allocator = allocator,
-                    .type = .Xlib,
-                    .window = undefined,
-                    .windows = if (!Parent.settings.single_window) &[0]*Parent.Window{} else undefined,
-                },
-                .display = display,
-                .root_window = root,
-
-                .glxCreateContextAttribsARB = createContextFn,
-            };
 
             std.log.scoped(.zwl).info("Platform Initialized: Xlib", .{});
             return @ptrCast(*Parent, self);
@@ -275,6 +276,11 @@ pub fn Platform(comptime Parent: anytype) type {
                     .window = undefined,
                 };
 
+                var visual: ?*c.Visual = null;
+                var depth: c_uint = 0;
+                var parent_window = DefaultRootWindow(parent.display);
+                var swa = std.mem.zeroes(c.XSetWindowAttributes);
+
                 const visual_attribs = [_:0]c_int{
                     c.GLX_X_RENDERABLE,  c.True,
                     c.GLX_DRAWABLE_TYPE, c.GLX_WINDOW_BIT,
@@ -358,7 +364,6 @@ pub fn Platform(comptime Parent: anytype) type {
                     c.AllocNone,
                 );
 
-                var swa = std.mem.zeroes(c.XSetWindowAttributes);
                 swa.colormap = colormap;
                 swa.event_mask = c.StructureNotifyMask;
                 swa.background_pixmap = c.None;
@@ -398,7 +403,7 @@ pub fn Platform(comptime Parent: anytype) type {
                         //     null,
                         //     c.GL_TRUE,
                         // ) orelse return error.InvalidOpenGL;
-                        self.glx_context = parent.glxCreateContextAttribsARB.?(
+                        self.glx_context = parent.gl.glxCreateContextAttribsARB(
                             parent.display,
                             bestFbc,
                             null,
