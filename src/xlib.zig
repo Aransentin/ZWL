@@ -4,39 +4,17 @@ const zwl = @import("zwl.zig");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.zwl);
 
-const c = @cImport({
-    @cInclude("X11/X.h");
-    @cInclude("X11/Xlib.h");
-    @cInclude("GL/gl.h");
-    @cInclude("GL/glx.h");
-});
-
-inline fn RootWindow(dpy: *c.Display, screen: c_int) c.Window {
-    const private_display = @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy));
-    return ScreenOfDisplay(
-        private_display,
-        @intCast(usize, screen),
-    ).root;
-}
-
-inline fn DefaultRootWindow(dpy: *c.Display) c.Window {
-    const private_display = @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy));
-    return ScreenOfDisplay(
-        private_display,
-        @intCast(usize, private_display.*.default_screen),
-    ).root;
-}
-
-inline fn DefaultScreen(dpy: *c.Display) c_int {
-    return @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy)).*.default_screen;
-}
-
-inline fn ScreenOfDisplay(dpy: c._XPrivDisplay, scr: usize) *c.Screen {
-    return @ptrCast(*c.Screen, &dpy.*.screens[scr]);
-}
-
 pub fn Platform(comptime Parent: anytype) type {
     return struct {
+        const c = @cImport({
+            @cInclude("X11/X.h");
+            @cInclude("X11/Xlib.h");
+            if (Parent.settings.backends_enabled.opengl) {
+                @cInclude("GL/gl.h");
+                @cInclude("GL/glx.h");
+            }
+        });
+
         const Self = @This();
         const GlXCreateContextAttribsARB = fn (
             dpy: *c.Display,
@@ -485,5 +463,29 @@ pub fn Platform(comptime Parent: anytype) type {
                 return error.Unimplemented;
             }
         };
+
+        inline fn RootWindow(dpy: *c.Display, screen: c_int) c.Window {
+            const private_display = @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy));
+            return ScreenOfDisplay(
+                private_display,
+                @intCast(usize, screen),
+            ).root;
+        }
+
+        inline fn DefaultRootWindow(dpy: *c.Display) c.Window {
+            const private_display = @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy));
+            return ScreenOfDisplay(
+                private_display,
+                @intCast(usize, private_display.*.default_screen),
+            ).root;
+        }
+
+        inline fn DefaultScreen(dpy: *c.Display) c_int {
+            return @ptrCast(c._XPrivDisplay, @alignCast(@alignOf(c._XPrivDisplay), dpy)).*.default_screen;
+        }
+
+        inline fn ScreenOfDisplay(dpy: c._XPrivDisplay, scr: usize) *c.Screen {
+            return @ptrCast(*c.Screen, &dpy.*.screens[scr]);
+        }
     };
 }
