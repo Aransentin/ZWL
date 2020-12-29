@@ -429,7 +429,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                             if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == windows.FALSE)
                                 return error.InvalidOpenGL;
-                            if (numFormats != 1)
+                            if (numFormats == 0) // AMD driver may return numFormats > nMaxFormats, see issue #14
                                 return error.InvalidOpenGL;
 
                             if (dummy_pixel_format != pixelFormat)
