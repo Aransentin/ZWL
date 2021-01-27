@@ -103,7 +103,7 @@ pub fn Platform(comptime Parent: anytype) type {
             return null;
         }
 
-        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(std.os.windows.WINAPI) ?*c_void {
+        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(windows.WINAPI) ?*c_void {
             const msg = @intToEnum(windows.user32.WM, uMsg);
             switch (msg) {
                 .CLOSE => {
