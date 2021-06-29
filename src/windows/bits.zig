@@ -25,7 +25,7 @@ pub const STD_OUTPUT_HANDLE = maxInt(DWORD) - 11 + 1;
 /// The standard error device. Initially, this is the active console screen buffer, CONOUT$.
 pub const STD_ERROR_HANDLE = maxInt(DWORD) - 12 + 1;
 
-pub const WINAPI: builtin.CallingConvention = if (builtin.arch == .i386)
+pub const WINAPI: std.builtin.CallingConvention = if (builtin.target.cpu.arch == .i386)
     .Stdcall
 else
     .C;
@@ -937,7 +937,7 @@ pub const EXCEPTION_RECORD = extern struct {
     ExceptionInformation: [15]usize,
 };
 
-pub usingnamespace switch (builtin.arch) {
+pub usingnamespace switch (builtin.target.cpu.arch) {
     .i386 => struct {
         pub const FLOATING_SAVE_AREA = extern struct {
             ControlWord: DWORD,
