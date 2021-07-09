@@ -232,7 +232,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 } else null;
             }
             return null;
-    }
+        }
 
         const WindowGLData = struct {
             glx_context: c.GLXContext,
