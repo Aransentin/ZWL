@@ -10,7 +10,7 @@ pub const HBITMAP = *opaque {
 };
 pub const HGDIOBJ = *opaque {};
 
-pub const Compression = extern enum {
+pub const Compression = enum(c_int) {
     BI_RGB = 0x0000,
     BI_RLE8 = 0x0001,
     BI_RLE4 = 0x0002,
@@ -22,7 +22,7 @@ pub const Compression = extern enum {
     BI_CMYKRLE4 = 0x000D,
 };
 
-pub const DIBColors = extern enum {
+pub const DIBColors = enum(c_int) {
     DIB_RGB_COLORS = 0x00,
     DIB_PAL_COLORS = 0x01,
     DIB_PAL_INDICES = 0x02,
@@ -54,7 +54,7 @@ pub const BITMAPINFO = extern struct {
     bmiColors: [1]RGBQUAD, // dynamic size...
 };
 
-pub const TernaryRasterOperation = extern enum {
+pub const TernaryRasterOperation = enum(c_int) {
     SRCCOPY = 0x00CC0020, // dest = source
     SRCPAINT = 0x00EE0086, // dest = source OR dest
     SRCAND = 0x008800C6, // dest = source AND dest

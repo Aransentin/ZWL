@@ -325,7 +325,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
                 if (settings.single_window) {
                     self.platform.window = null;
                 } else {
-                    for (self.platform.windows) |*w, i| {
+                    for (self.platform.windows) |*w| {
                         if (w.* == self) {
                             w.* = self.platform.windows[self.platform.windows.len - 1];
                             break;

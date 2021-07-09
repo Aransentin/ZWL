@@ -50,7 +50,7 @@ pub const CREATESTRUCTW = extern struct {
     dwExStyle: DWORD,
 };
 
-pub const WM = extern enum(u32) {
+pub const WM = enum(u32) {
     pub const WININICHANGE = @This().SETTINGCHANGE;
 
     NULL = 0x0000,

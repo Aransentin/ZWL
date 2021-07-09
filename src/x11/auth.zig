@@ -26,6 +26,7 @@ pub fn getCookie(path: ?[]const u8) ![16]u8 {
 
     while (true) {
         const family = reader.readIntBig(u16) catch break;
+        _ = family;
 
         const addr_len = try reader.readIntBig(u16);
         try reader.skipBytes(addr_len, .{ .buf_size = 64 });

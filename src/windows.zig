@@ -25,6 +25,7 @@ pub fn Platform(comptime Parent: anytype) type {
         libgl: ?windows.HMODULE,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+            _ = options;
             var self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
@@ -491,6 +492,8 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             pub fn configure(self: *Window, options: zwl.WindowOptions) !void {
+                _ = self;
+                _ = options;
                 return error.Unimplemented;
             }
 
@@ -502,7 +505,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 switch (self.backend) {
                     .none => {},
                     .software => return error.InvalidRenderBackend,
-                    .opengl => |hglrc| {
+                    .opengl => {
                         if (self.handle) |handle| {
                             const hDC = windows.user32.GetDC(handle) orelse @panic("couldn't get DC!");
                             defer _ = windows.user32.ReleaseDC(handle, hDC);
@@ -522,7 +525,7 @@ pub fn Platform(comptime Parent: anytype) type {
             pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
                 switch (self.backend) {
                     .software => |render_ctx| {
-                        var platform = @ptrCast(*Self, self.parent.platform);
+                        // var platform = @ptrCast(*Self, self.parent.platform);
 
                         return zwl.PixelBuffer{
                             .data = render_ctx.bitmap.pixels,
@@ -535,6 +538,7 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             pub fn submitPixels(self: *Window, updates: []const zwl.UpdateArea) !void {
+                _ = updates;
                 if (self.backend != .software)
                     return error.InvalidRenderBackend;
                 if (self.handle) |handle| {

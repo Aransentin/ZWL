@@ -35,6 +35,7 @@ pub fn Platform(comptime Parent: anytype) type {
         gl: if (Parent.settings.backends_enabled.opengl) PlatformGLData else void,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+            _ = options;
             var self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
@@ -138,7 +139,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     c.KeyRelease,
                     => {
                         const ev = xev.xkey;
-                        if (self.getWindowById(ev.window)) |window| {
+                        if (self.getWindowById(ev.window)) |_| {
                             var kev = zwl.KeyEvent{
                                 .scancode = @intCast(u8, ev.keycode - 8),
                             };
@@ -154,7 +155,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     c.ButtonRelease,
                     => {
                         const ev = xev.xbutton;
-                        if (self.getWindowById(ev.window)) |window| {
+                        if (self.getWindowById(ev.window)) |_| {
                             var bev = zwl.MouseButtonEvent{
                                 .x = @intCast(i16, ev.x),
                                 .y = @intCast(i16, ev.y),
@@ -170,7 +171,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     },
                     c.MotionNotify => {
                         const ev = xev.xmotion;
-                        if (self.getWindowById(ev.window)) |window| {
+                        if (self.getWindowById(ev.window)) |_| {
                             return Parent.Event{
                                 .MouseMotion = zwl.MouseMotionEvent{
                                     .x = @intCast(i16, ev.x),
@@ -207,6 +208,7 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+            _ = self;
             return @intToPtr(?*c_void, @ptrToInt(c.glXGetProcAddress(entry_point.ptr)));
         }
 
@@ -232,7 +234,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 } else null;
             }
             return null;
-    }
+        }
 
         const WindowGLData = struct {
             glx_context: c.GLXContext,
@@ -257,7 +259,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 };
 
                 switch (options.backend) {
-                    .opengl => |version| {
+                    .opengl => {
                         try self.initGL(parent, options);
                         return;
                     },
@@ -449,6 +451,8 @@ pub fn Platform(comptime Parent: anytype) type {
 
             pub fn configure(self: *Window, options: zwl.WindowOptions) !void {
                 // Do
+                _ = self;
+                _ = options;
             }
 
             pub fn getSize(self: *Window) [2]u16 {
@@ -456,10 +460,13 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
+                _ = self;
                 return error.Unimplemented;
             }
 
             pub fn submitPixels(self: *Window, pdates: []const zwl.UpdateArea) !void {
+                _ = self;
+                _ = pdates;
                 return error.Unimplemented;
             }
         };

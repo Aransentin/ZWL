@@ -282,7 +282,7 @@ pub const IO_STATUS_BLOCK = extern struct {
     Information: ULONG_PTR,
 };
 
-pub const FILE_INFORMATION_CLASS = extern enum {
+pub const FILE_INFORMATION_CLASS = enum(c_int) {
     FileDirectoryInformation = 1,
     FileFullDirectoryInformation,
     FileBothDirectoryInformation,
@@ -901,7 +901,7 @@ pub const COINIT_APARTMENTTHREADED = COINIT.COINIT_APARTMENTTHREADED;
 pub const COINIT_MULTITHREADED = COINIT.COINIT_MULTITHREADED;
 pub const COINIT_DISABLE_OLE1DDE = COINIT.COINIT_DISABLE_OLE1DDE;
 pub const COINIT_SPEED_OVER_MEMORY = COINIT.COINIT_SPEED_OVER_MEMORY;
-pub const COINIT = extern enum {
+pub const COINIT = enum(c_int) {
     COINIT_APARTMENTTHREADED = 2,
     COINIT_MULTITHREADED = 0,
     COINIT_DISABLE_OLE1DDE = 4,
@@ -1315,11 +1315,13 @@ pub const PEB = extern struct {
     ImageSubSystemMinorVersion: ULONG,
     // note: there is padding here on 64 bit
     ActiveProcessAffinityMask: KAFFINITY,
-    GdiHandleBuffer: [switch (@sizeOf(usize)) {
-        4 => 0x22,
-        8 => 0x3C,
-        else => unreachable,
-    }]ULONG,
+    GdiHandleBuffer: [
+        switch (@sizeOf(usize)) {
+            4 => 0x22,
+            8 => 0x3C,
+            else => unreachable,
+        }
+    ]ULONG,
 
     // Fields appended in 5.0 (Windows 2000):
     PostProcessInitRoutine: PVOID,

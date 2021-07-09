@@ -15,7 +15,7 @@ pub const DRAWABLE = extern union {
 };
 pub const ATOM = u32;
 pub const VISUALID = u32;
-pub const VISUALTYPE = extern enum(u8) {
+pub const VISUALTYPE = enum(u8) {
     StaticGray = 0,
     GrayScale = 1,
     StaticColor = 2,
@@ -140,7 +140,7 @@ pub const Visual = extern struct {
 
 // Events
 
-pub const XEventCode = extern enum(u8) {
+pub const XEventCode = enum(u8) {
     Error = 0,
     Reply = 1,
     KeyPress = 2,
@@ -180,7 +180,7 @@ pub const XEventCode = extern enum(u8) {
     _,
 };
 
-pub const XErrorCode = extern enum(u8) {
+pub const XErrorCode = enum(u8) {
     Request = 1,
     Value = 2,
     Window = 3,
