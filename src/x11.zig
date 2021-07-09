@@ -73,7 +73,7 @@ pub fn Platform(comptime Parent: anytype) type {
     return struct {
         const Self = @This();
         parent: Parent,
-        file: std.fs.File,
+        file: std.net.Stream,
         file_is_unix: if (file_is_always_unix) void else bool,
         replies: ReplyCBuffer = .{},
 
@@ -864,7 +864,7 @@ fn xpad(n: usize) usize {
     return @bitCast(usize, (-%@bitCast(isize, n)) & 3);
 }
 
-fn displayConnectUnix(display_info: DisplayInfo) !std.fs.File {
+fn displayConnectUnix(display_info: DisplayInfo) !std.net.Stream {
     const opt_non_block = if (std.io.is_async) os.SOCK_NONBLOCK else 0;
     var socket = try std.os.socket(std.os.AF_UNIX, std.os.SOCK_STREAM | std.os.SOCK_CLOEXEC | opt_non_block, 0);
     errdefer std.os.close(socket);
@@ -873,10 +873,10 @@ fn displayConnectUnix(display_info: DisplayInfo) !std.fs.File {
     _ = std.fmt.formatIntBuf(addr.path["\x00/tmp/.X11-unix/X".len..], display_info.display, 10, false, .{});
     const addrlen = 1 + std.mem.lenZ(@ptrCast([*:0]u8, addr.path[1..]));
     try std.os.connect(socket, @ptrCast(*const std.os.sockaddr, &addr), @sizeOf(std.os.sockaddr_un) - @intCast(u32, addr.path.len - addrlen));
-    return std.fs.File{ .handle = socket };
+    return std.net.Stream{ .handle = socket };
 }
 
-fn displayConnectTCP(display_info: DisplayInfo) !std.fs.File {
+fn displayConnectTCP(display_info: DisplayInfo) !std.net.Stream {
     const hostname = if (std.mem.eql(u8, display_info.host, "")) "127.0.0.1" else display_info.host;
     var tmpmem: [4096]u8 = undefined;
     var tmpalloc = std.heap.FixedBufferAllocator.init(tmpmem[0..]);
@@ -921,7 +921,7 @@ fn readServerHandshake(reader: anytype) !ServerHandshake {
             var reason = reason_buf[0..response_header.reason_length];
             if (reason.len > 0 and reason[reason.len - 1] == '\n')
                 reason = reason[0 .. reason.len - 1];
-            std.log.scoped(.zwl).err("X11 handshake failed: {}", .{reason});
+            std.log.scoped(.zwl).err("X11 handshake failed: {s}", .{reason});
             return error.HandshakeFailed;
         },
         1 => {

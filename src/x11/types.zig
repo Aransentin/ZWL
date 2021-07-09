@@ -1,5 +1,7 @@
 const builtin = @import("builtin");
 
+const endian = builtin.target.cpu.arch.endian();
+
 pub const WINDOW = u32;
 pub const PIXMAP = u32;
 pub const GCONTEXT = u32;
@@ -56,7 +58,7 @@ pub const BuiltinAtom = enum(u32) {
 
 // Setup
 pub const SetupRequest = extern struct {
-    byte_order: u8 = if (builtin.endian == .Little) 0x6c else 0x42,
+    byte_order: u8 = if (endian == .Little) 0x6c else 0x42,
     pad0: u8 = 0,
     proto_major: u16 = 11,
     proto_minor: u16 = 0,
