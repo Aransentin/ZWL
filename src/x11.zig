@@ -212,7 +212,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 const evtype = evdata[0] & 0x7F;
                 const seq = std.mem.readIntNative(u16, evdata[2..4]);
-                const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
+                // const extlen = std.mem.readIntNative(u32, evdata[4..8]) * 4;
 
                 if (evtype == @enumToInt(XEventCode.Error)) {
                     unreachable; // We will never make mistakes during init
@@ -402,7 +402,7 @@ pub fn Platform(comptime Parent: anytype) type {
                         .MotionNotify,
                         => {
                             const ev = @ptrCast(*const InputDeviceEvent, @alignCast(4, evdata.ptr));
-                            if (self.getWindowById(ev.event)) |window| {
+                            if (self.getWindowById(ev.event)) |_| {
                                 switch (evtype) {
                                     .KeyPress,
                                     .KeyRelease,
@@ -756,10 +756,10 @@ pub fn Platform(comptime Parent: anytype) type {
                     .remainder = 0,
                 };
                 try writer.writeAll(std.mem.asBytes(&present_pixmap));
-                const present_notify = PresentNotify{
-                    .window = self.handle,
-                    .serial = 0,
-                };
+                // const present_notify = PresentNotify{
+                //     .window = self.handle,
+                //     .serial = 0,
+                // };
                 // Add this to segfault X11
                 //try writer.writeAll(std.mem.asBytes(&present_notify));
                 platform.replies.ignoreEvent();
@@ -949,6 +949,7 @@ fn readScreenInfo(server_handshake: ServerHandshake, screen_id: usize, reader: a
     var pfi: usize = 0;
     while (pfi < server_handshake.pixmap_formats_len) : (pfi += 1) {
         const format = try reader.readStruct(PixmapFormat);
+        _ = format;
     }
 
     var sci: usize = 0;

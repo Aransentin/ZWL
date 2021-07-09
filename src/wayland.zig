@@ -10,6 +10,7 @@ pub fn Platform(comptime Parent: anytype) type {
         file: std.fs.File,
 
         pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+            _ = options;
             const file = try displayConnect();
             errdefer file.close();
 
@@ -36,6 +37,7 @@ pub fn Platform(comptime Parent: anytype) type {
         }
 
         pub fn waitForEvent(self: *Self) !Parent.Event {
+            _ = self;
             return error.Unimplemented;
         }
 
@@ -58,6 +60,8 @@ pub fn Platform(comptime Parent: anytype) type {
             height: u16,
 
             pub fn init(self: *Window, parent: *Self, options: zwl.WindowOptions, writer: anytype) !void {
+                _ = options;
+                _ = writer;
                 self.* = .{
                     .parent = .{
                         .platform = @ptrCast(*Parent, parent),
@@ -68,10 +72,13 @@ pub fn Platform(comptime Parent: anytype) type {
             }
             pub fn deinit(self: *Window) void {
                 // Do
+                _ = self;
             }
 
             pub fn configure(self: *Window, options: zwl.WindowOptions) !void {
                 // Do
+                _ = self;
+                _ = options;
             }
 
             pub fn getSize(self: *Window) [2]u16 {
@@ -79,10 +86,13 @@ pub fn Platform(comptime Parent: anytype) type {
             }
 
             pub fn mapPixels(self: *Window) !zwl.PixelBuffer {
+                _ = self;
                 return error.Unimplemented;
             }
 
             pub fn submitPixels(self: *Window, pdates: []const zwl.UpdateArea) !void {
+                _ = self;
+                _ = pdates;
                 return error.Unimplemented;
             }
         };
