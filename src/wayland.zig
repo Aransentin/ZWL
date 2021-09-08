@@ -107,12 +107,12 @@ fn displayConnect() !std.fs.File {
     var allocator = std.heap.FixedBufferAllocator.init(&membuf);
     const path = try std.mem.join(&allocator.allocator, "/", &[_][]const u8{ XDG_RUNTIME_DIR, WAYLAND_DISPLAY });
 
-    const opt_non_block = if (std.io.is_async) os.SOCK_NONBLOCK else 0;
-    var socket = try std.os.socket(std.os.AF_UNIX, std.os.SOCK_STREAM | std.os.SOCK_CLOEXEC | opt_non_block, 0);
+    const opt_non_block = if (std.io.is_async) std.os.SOCK_NONBLOCK else 0;
+    var socket = try std.os.socket(std.os.AF.UNIX, std.os.SOCK.STREAM | std.os.SOCK.CLOEXEC | opt_non_block, 0);
     errdefer std.os.close(socket);
 
-    var addr = std.os.sockaddr_un{ .path = [_]u8{0} ** 108 };
+    var addr = std.os.sockaddr.un{ .path = [_]u8{0} ** 108 };
     std.mem.copy(u8, addr.path[0..], path);
-    try std.os.connect(socket, @ptrCast(*const std.os.sockaddr, &addr), @sizeOf(std.os.sockaddr_un) - @intCast(u32, addr.path.len - path.len));
+    try std.os.connect(socket, @ptrCast(*const std.os.sockaddr, &addr), @sizeOf(std.os.sockaddr.un) - @intCast(u32, addr.path.len - path.len));
     return std.fs.File{ .handle = socket };
 }
