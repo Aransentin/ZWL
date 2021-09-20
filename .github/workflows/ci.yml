@@ -26,5 +26,8 @@ jobs:
         with:
           version: master
 
+      - uses: nektro/actions-setup-zigmod
+      - run: zigmod ci
+
       - name: Compile softlogo
         run: zig build

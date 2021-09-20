@@ -1,12 +1,13 @@
 const std = @import("std");
 const Builder = std.build.Builder;
+const deps = @import("./deps.zig");
 
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
     const softlogo = b.addExecutable("softlogo", "examples/softlogo.zig");
-    softlogo.addPackagePath("zwl", "src/zwl.zig");
+    deps.addAllTo(softlogo);
     softlogo.single_threaded = true;
     softlogo.subsystem = .Windows;
     softlogo.setTarget(target);
