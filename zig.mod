@@ -4,3 +4,4 @@ main: src/zwl.zig
 license: EUPL-1.2
 description: Zig Windowing Library
 dependencies:
+  - src: git https://github.com/marlersoft/zigwin32

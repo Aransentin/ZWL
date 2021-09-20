@@ -64,7 +64,7 @@ pub fn main() !void {
                 const size = win.getSize();
                 std.log.info("Window resized: {}x{}", .{ size[0], size[1] });
             },
-            .WindowDestroyed => |win| {
+            .WindowDestroyed => |_| {
                 std.log.info("Window destroyed", .{});
                 return;
             },
