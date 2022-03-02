@@ -18,7 +18,7 @@ pub const PlatformsEnabled = struct {
     x11: bool = if (builtin.os.tag == .linux) true else false,
     wayland: bool = if (builtin.os.tag == .linux) true else false,
     windows: bool = if (builtin.os.tag == .windows) true else false,
-    /// The Xlib backend provides OpenGL features for all platforms. Fuck NVIDIA for us requiring to do this!
+    /// The Xlib backend provides OpenGL features for all platforms. Fuck NVIDIA for requiring us to do this!
     xlib: bool = false,
 };
 
@@ -240,11 +240,11 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
         pub const PlatformXlib = xlib.Platform(Self);
 
         type: PlatformType,
-        allocator: *Allocator,
+        allocator: Allocator,
         window: if (settings.single_window) ?*Window else void,
         windows: if (settings.single_window) void else []*Window,
 
-        pub fn init(allocator: *Allocator, options: PlatformOptions) !*Self {
+        pub fn init(allocator: Allocator, options: PlatformOptions) !*Self {
             if (settings.platforms_enabled.xlib) blk: {
                 return PlatformXlib.init(allocator, options) catch break :blk;
             }
@@ -296,7 +296,7 @@ pub fn Platform(comptime _settings: PlatformSettings) type {
             return window;
         }
 
-        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*anyopaque {
             return switch (self.type) {
                 .X11 => if (!settings.platforms_enabled.x11) unreachable else PlatformX11.getOpenGlProcAddress(@ptrCast(*PlatformX11, self), entry_point),
                 .Wayland => if (!settings.platforms_enabled.wayland) unreachable else PlatformWayland.getOpenGlProcAddress(@ptrCast(*PlatformWayland, self), entry_point),

@@ -9,7 +9,7 @@ pub fn Platform(comptime Parent: anytype) type {
         parent: Parent,
         file: std.fs.File,
 
-        pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+        pub fn init(allocator: Allocator, options: zwl.PlatformOptions) !*Parent {
             _ = options;
             const file = try displayConnect();
             errdefer file.close();
@@ -105,7 +105,7 @@ fn displayConnect() !std.fs.File {
 
     var membuf: [256]u8 = undefined;
     var allocator = std.heap.FixedBufferAllocator.init(&membuf);
-    const path = try std.mem.join(&allocator.allocator, "/", &[_][]const u8{ XDG_RUNTIME_DIR, WAYLAND_DISPLAY });
+    const path = try std.mem.join(allocator.allocator(), "/", &[_][]const u8{ XDG_RUNTIME_DIR, WAYLAND_DISPLAY });
 
     const opt_non_block = if (std.io.is_async) std.os.SOCK_NONBLOCK else 0;
     var socket = try std.os.socket(std.os.AF.UNIX, std.os.SOCK.STREAM | std.os.SOCK.CLOEXEC | opt_non_block, 0);

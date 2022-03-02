@@ -15,7 +15,7 @@ pub fn getCookie(path: ?[]const u8) ![16]u8 {
             const home = std.os.getenv("HOME") orelse return error.HomeDirectoryNotFound;
             var membuf: [256]u8 = undefined;
             var allocator = std.heap.FixedBufferAllocator.init(&membuf);
-            const fpath = try std.mem.joinZ(&allocator.allocator, "/", &[_][]const u8{ home, ".Xauthority" });
+            const fpath = try std.mem.joinZ(allocator.allocator(), "/", &[_][]const u8{ home, ".Xauthority" });
             break :blk try std.fs.openFileAbsoluteZ(fpath, .{ .read = true, .write = false });
         }
     };

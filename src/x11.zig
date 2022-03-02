@@ -100,7 +100,7 @@ pub fn Platform(comptime Parent: anytype) type {
         present_major_opcode: u8 = 0,
         present_first_event: u8 = 0,
 
-        pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+        pub fn init(allocator: Allocator, options: zwl.PlatformOptions) !*Parent {
             if (builtin.os.tag == .windows) {
                 _ = try std.os.windows.WSAStartup(2, 2);
             }
@@ -112,7 +112,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
             var display_info_buf: [256]u8 = undefined;
             var display_info_allocator = std.heap.FixedBufferAllocator.init(display_info_buf[0..]);
-            const display_info = try DisplayInfo.init(&display_info_allocator.allocator, options.x11.host, options.x11.display, options.x11.screen);
+            const display_info = try DisplayInfo.init(&display_info_allocator.allocator(), options.x11.host, options.x11.display, options.x11.screen);
 
             const file = blk: {
                 if (file_is_always_unix or display_info.unix) {
@@ -871,7 +871,7 @@ fn displayConnectUnix(display_info: DisplayInfo) !std.net.Stream {
     var addr = std.os.sockaddr.un{ .path = [_]u8{0} ** 108 };
     std.mem.copy(u8, addr.path[0..], "\x00/tmp/.X11-unix/X");
     _ = std.fmt.formatIntBuf(addr.path["\x00/tmp/.X11-unix/X".len..], display_info.display, 10, .lower, .{});
-    const addrlen = 1 + std.mem.lenZ(@ptrCast([*:0]u8, addr.path[1..]));
+    const addrlen = 1 + std.mem.len(@ptrCast([*:0]u8, addr.path[1..]));
     try std.os.connect(socket, @ptrCast(*const std.os.sockaddr, &addr), @sizeOf(std.os.sockaddr.un) - @intCast(u32, addr.path.len - addrlen));
     return std.net.Stream{ .handle = socket };
 }
@@ -880,7 +880,7 @@ fn displayConnectTCP(display_info: DisplayInfo) !std.net.Stream {
     const hostname = if (std.mem.eql(u8, display_info.host, "")) "127.0.0.1" else display_info.host;
     var tmpmem: [4096]u8 = undefined;
     var tmpalloc = std.heap.FixedBufferAllocator.init(tmpmem[0..]);
-    const file = try std.net.tcpConnectToHost(&tmpalloc.allocator, hostname, 6000 + @intCast(u16, display_info.display));
+    const file = try std.net.tcpConnectToHost(tmpalloc.allocator(), hostname, 6000 + @intCast(u16, display_info.display));
     errdefer file.close();
     // Set TCP_NODELAY?
     return file;

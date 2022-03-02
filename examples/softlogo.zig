@@ -1,5 +1,6 @@
 const std = @import("std");
 const zwl = @import("zwl");
+const builtin = @import("builtin");
 
 const Platform = zwl.Platform(.{
     .single_window = true,
@@ -10,7 +11,7 @@ const Platform = zwl.Platform(.{
     },
     .remote = true,
     .platforms_enabled = .{
-        .wayland = (std.builtin.os.tag != .windows),
+        .wayland = (builtin.os.tag != .windows),
     },
 });
 
@@ -27,7 +28,7 @@ pub fn main() !void {
     std.crypto.random.bytes(seed_bytes[0..]);
     var rng = std.rand.DefaultPrng.init(std.mem.readIntNative(u64, &seed_bytes));
     for (stripes) |*stripe| {
-        stripe.* = .{ @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, @as(u8, rng.random.int(u6)) + 191, 0 };
+        stripe.* = .{ @as(u8, rng.random().int(u6)) + 191, @as(u8, rng.random().int(u6)) + 191, @as(u8, rng.random().int(u6)) + 191, 0 };
     }
     _ = try std.fs.cwd().readFile("logo.bgra", std.mem.asBytes(&logo));
 

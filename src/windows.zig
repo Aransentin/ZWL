@@ -19,7 +19,7 @@ pub fn Platform(comptime Parent: anytype) type {
         revent: ?Parent.Event = null,
         libgl: ?windows.HMODULE,
 
-        pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+        pub fn init(allocator: Allocator, options: zwl.PlatformOptions) !*Parent {
             _ = options;
             var self = try allocator.create(Self);
             errdefer allocator.destroy(self);
@@ -70,23 +70,23 @@ pub fn Platform(comptime Parent: anytype) type {
             self.parent.allocator.destroy(self);
         }
 
-        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*anyopaque {
             // std.debug.print("lookup {} with ", .{
             //     std.mem.span(entry_point),
             // });
             if (self.libgl) |libgl| {
-                const T = fn (entry_point: [*:0]const u8) ?*c_void;
+                const T = fn (entry_point: [*:0]const u8) ?*anyopaque;
 
                 if (windows.GetProcAddress(libgl, "wglGetProcAddress")) |wglGetProcAddress| {
                     if (@ptrCast(T, wglGetProcAddress)(entry_point.ptr)) |ptr| {
                         // std.debug.print("dynamic wglGetProcAddress: {}\n", .{ptr});
-                        return @ptrCast(*c_void, ptr);
+                        return @ptrCast(*anyopaque, ptr);
                     }
                 }
 
                 if (windows.GetProcAddress(libgl, entry_point.ptr)) |ptr| {
                     // std.debug.print("GetProcAddress: {}\n", .{ptr});
-                    return @ptrCast(*c_void, ptr);
+                    return @ptrCast(*anyopaque, ptr);
                 }
             }
 
@@ -99,7 +99,7 @@ pub fn Platform(comptime Parent: anytype) type {
             return null;
         }
 
-        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*c_void) callconv(windows.WINAPI) ?*c_void {
+        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*anyopaque) callconv(windows.WINAPI) ?*anyopaque {
             const msg = @intToEnum(windows.WM, uMsg);
             switch (msg) {
                 .CLOSE => {
@@ -581,7 +581,7 @@ pub fn Platform(comptime Parent: anytype) type {
                         self.memory_dc,
                         &bmi,
                         @enumToInt(windows.DIBColors.DIB_RGB_COLORS),
-                        @ptrCast(**c_void, &bmp.pixels),
+                        @ptrCast(**anyopaque, &bmp.pixels),
                         null,
                         0,
                     ) orelse return error.CreateBitmapError;
