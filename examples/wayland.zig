@@ -4,13 +4,11 @@ const zwl = @import("zwl");
 const Platform = zwl.Platform(.{
     .single_window = true,
     .backends_enabled = .{
-        .software = false,
         .opengl = true,
-        // .vulkan = false,
     },
-    // .platforms_enabled = .{
-    //     .wayland,
-    // },
+    .platforms_enabled = .{
+        .wayland = true,
+    },
 });
 
 pub fn main() !void {
@@ -42,7 +40,17 @@ fn eventLoop(platform: *Platform) !void {
         const event = try platform.waitForEvent();
 
         switch (event) {
-            .WindowVBlank => |_| {},
+            .KeyDown => |key| {
+                switch (key.scancode) {
+                    1 => {
+                        std.log.info("Esc Pressed", .{});
+                        return;
+                    },
+                    else => {
+                        std.log.info("Pressed {}", .{key.scancode});
+                    },
+                }
+            },
             .WindowResized => |win| {
                 const size = win.getSize();
                 std.log.info("Window resized: {}x{}", .{ size[0], size[1] });
