@@ -4,19 +4,19 @@ const builtin = @import("builtin");
 pub fn getCookie(path: ?[]const u8) ![16]u8 {
     const xauth_file = blk: {
         if (path) |p| {
-            break :blk try std.fs.openFileAbsolute(p, .{ .read = true, .write = false });
+            break :blk try std.fs.openFileAbsolute(p, .{});
         } else if (builtin.os.tag == .windows) {
             const xauthority = std.os.getenvW(std.unicode.utf8ToUtf16LeStringLiteral("XAUTHORITY")) orelse return error.XAuthorityNotSpecified;
-            break :blk try std.fs.openFileAbsoluteW(xauthority, .{ .read = true, .write = false });
+            break :blk try std.fs.openFileAbsoluteW(xauthority, .{});
         } else {
             if (std.os.getenv("XAUTHORITY")) |xafn| {
-                break :blk try std.fs.openFileAbsolute(xafn, .{ .read = true, .write = false });
+                break :blk try std.fs.openFileAbsolute(xafn, .{});
             }
             const home = std.os.getenv("HOME") orelse return error.HomeDirectoryNotFound;
             var membuf: [256]u8 = undefined;
             var allocator = std.heap.FixedBufferAllocator.init(&membuf);
-            const fpath = try std.mem.joinZ(&allocator.allocator, "/", &[_][]const u8{ home, ".Xauthority" });
-            break :blk try std.fs.openFileAbsoluteZ(fpath, .{ .read = true, .write = false });
+            const fpath = try std.mem.joinZ(allocator.allocator(), "/", &[_][]const u8{ home, ".Xauthority" });
+            break :blk try std.fs.openFileAbsoluteZ(fpath, .{});
         }
     };
     defer xauth_file.close();

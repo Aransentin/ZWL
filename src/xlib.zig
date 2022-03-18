@@ -34,7 +34,7 @@ pub fn Platform(comptime Parent: anytype) type {
         root_window: c_ulong,
         gl: if (Parent.settings.backends_enabled.opengl) PlatformGLData else void,
 
-        pub fn init(allocator: *Allocator, options: zwl.PlatformOptions) !*Parent {
+        pub fn init(allocator: Allocator, options: zwl.PlatformOptions) !*Parent {
             _ = options;
             var self = try allocator.create(Self);
             errdefer allocator.destroy(self);
@@ -207,9 +207,9 @@ pub fn Platform(comptime Parent: anytype) type {
             }
         }
 
-        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*c_void {
+        pub fn getOpenGlProcAddress(self: *Self, entry_point: [:0]const u8) ?*anyopaque {
             _ = self;
-            return @intToPtr(?*c_void, @ptrToInt(c.glXGetProcAddress(entry_point.ptr)));
+            return @intToPtr(?*anyopaque, @ptrToInt(c.glXGetProcAddress(entry_point.ptr)));
         }
 
         pub fn createWindow(self: *Self, options: zwl.WindowOptions) !*Parent.Window {
