@@ -288,8 +288,13 @@ pub fn Platform(comptime Parent: anytype) type {
                     &swa,
                 );
 
+                var title: [:0]const u8 = "VERY SIMPLE APPLICATION";
+                if (options.title != null) {
+                    title = try std.cstr.addNullByte(std.heap.c_allocator, options.title.?);
+                }
+
                 _ = c.XMapWindow(parent.display, self.window);
-                _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
+                _ = c.XStoreName(parent.display, self.window, title);
             }
 
             fn initGL(self: *Window, parent: *Self, options: zwl.WindowOptions) !void {
@@ -401,8 +406,13 @@ pub fn Platform(comptime Parent: anytype) type {
                 if (self.window == 0)
                     return error.CouldNotCreateWindow;
 
+                var title: [:0]const u8 = "VERY SIMPLE APPLICATION";
+                if (options.title != null) {
+                    title = try std.cstr.addNullByte(std.heap.c_allocator, options.title.?);
+                }
+
                 _ = c.XMapWindow(parent.display, self.window);
-                _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
+                _ = c.XStoreName(parent.display, self.window, title);
 
                 const version = options.backend.opengl;
 
