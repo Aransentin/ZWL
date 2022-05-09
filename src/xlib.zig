@@ -294,7 +294,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
 
                 _ = c.XMapWindow(parent.display, self.window);
-                _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
+                _ = c.XStoreName(parent.display, self.window, title);
             }
 
             fn initGL(self: *Window, parent: *Self, options: zwl.WindowOptions) !void {
@@ -412,7 +412,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
 
                 _ = c.XMapWindow(parent.display, self.window);
-                _ = c.XStoreName(parent.display, self.window, "VERY SIMPLE APPLICATION");
+                _ = c.XStoreName(parent.display, self.window, title);
 
                 const version = options.backend.opengl;
 
