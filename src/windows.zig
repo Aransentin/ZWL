@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const gl = @import("opengl.zig");
 
 pub const windows = @import("win32").everything;
+const win32zig = @import("win32").zig;
 
 const classname = std.unicode.utf8ToUtf16LeStringLiteral("ZWL");
 
@@ -17,7 +18,7 @@ pub fn Platform(comptime Parent: anytype) type {
         parent: Parent,
         instance: windows.HINSTANCE,
         revent: ?Parent.Event = null,
-        libgl: ?windows.HMODULE,
+        libgl: ?windows.HINSTANCE,
 
         pub fn init(allocator: Allocator, options: zwl.PlatformOptions) !*Parent {
             _ = options;
@@ -27,7 +28,8 @@ pub fn Platform(comptime Parent: anytype) type {
             const module_handle = windows.GetModuleHandleW(null) orelse unreachable;
 
             const window_class_info = windows.WNDCLASSEXW{
-                .style = windows.CS_OWNDC | windows.CS_HREDRAW | windows.CS_VREDRAW,
+                .cbSize = @sizeOf(windows.WNDCLASSEXW),
+                .style = windows.WNDCLASS_STYLES.initFlags(.{ .OWNDC = 1, .HREDRAW = 1, .VREDRAW = 1 }),
                 .lpfnWndProc = windowProc,
                 .cbClsExtra = 0,
                 .cbWndExtra = @sizeOf(usize),
@@ -99,34 +101,33 @@ pub fn Platform(comptime Parent: anytype) type {
             return null;
         }
 
-        fn windowProc(hwnd: windows.HWND, uMsg: c_uint, wParam: usize, lParam: ?*anyopaque) callconv(windows.WINAPI) ?*anyopaque {
-            const msg = @intToEnum(windows.WM, uMsg);
-            switch (msg) {
-                .CLOSE => {
+        fn windowProc(hwnd: windows.HWND, uMsg: u32, wParam: windows.WPARAM, lParam: windows.LPARAM) callconv(std.os.windows.WINAPI) windows.LRESULT {
+            switch (uMsg) {
+                windows.WM_CLOSE => {
                     _ = windows.DestroyWindow(hwnd);
                 },
-                .DESTROY => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                windows.WM_DESTROY => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
                         var platform = @ptrCast(*Self, window.parent.platform);
                         window.handle = null;
                         platform.revent = Parent.Event{ .WindowDestroyed = @ptrCast(*Parent.Window, window) };
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
-                .CREATE => {
-                    const create_info_opt = @ptrCast(?*windows.CREATESTRUCTW, @alignCast(@alignOf(windows.CREATESTRUCTW), lParam));
+                windows.WM_CREATE => {
+                    const create_info_opt = @intToPtr(?*windows.CREATESTRUCTW, @bitCast(usize, lParam));
                     if (create_info_opt) |create_info| {
-                        _ = windows.SetWindowLongPtrW(hwnd, 0, @bitCast(isize, @ptrToInt(create_info.lpCreateParams)));
+                        _ = windows.SetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0), @bitCast(isize, @ptrToInt(create_info.lpCreateParams)));
                     } else {
-                        return @intToPtr(windows.LRESULT, @bitCast(usize, @as(isize, -1)));
+                        return -1;
                     }
                 },
-                .SIZE => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                windows.WM_SIZE => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
-                        const dim = @bitCast([2]u16, @intCast(u32, @ptrToInt(lParam)));
+                        const dim = @bitCast([2]u16, @intCast(u32, lParam));
                         if (dim[0] != window.width or dim[1] != window.height) {
                             var platform = @ptrCast(*Self, window.parent.platform);
                             window.width = dim[0];
@@ -137,18 +138,18 @@ pub fn Platform(comptime Parent: anytype) type {
                                     window.backend.software.bitmap.destroy();
                                     window.backend.software.bitmap = new_bmp;
                                 } else |err| {
-                                    log.emerg("failed to recreate software framebuffer: {}", .{err});
+                                    log.err("failed to recreate software framebuffer: {}", .{err});
                                 }
                             }
 
                             platform.revent = Parent.Event{ .WindowResized = @ptrCast(*Parent.Window, window) };
                         }
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
-                .PAINT => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                windows.WM_PAINT => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
                         var platform = @ptrCast(*Self, window.parent.platform);
 
@@ -160,7 +161,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
                                 const hOldBmp = windows.SelectObject(
                                     render_context.memory_dc,
-                                    render_context.bitmap.handle.toGdiObject(),
+                                    render_context.bitmap.handle,
                                 );
                                 defer _ = windows.SelectObject(render_context.memory_dc, hOldBmp);
 
@@ -173,24 +174,24 @@ pub fn Platform(comptime Parent: anytype) type {
                                     render_context.memory_dc,
                                     0,
                                     0,
-                                    @enumToInt(windows.TernaryRasterOperation.SRCCOPY),
+                                    windows.SRCCOPY,
                                 );
                             }
                         }
 
                         platform.revent = Parent.Event{ .WindowVBlank = @ptrCast(*Parent.Window, window) };
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
 
                 // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
-                .MOUSEMOVE => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                windows.WM_MOUSEMOVE => {
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
                         var platform = @ptrCast(*Self, window.parent.platform);
 
-                        const pos = @bitCast([2]u16, @intCast(u32, @ptrToInt(lParam)));
+                        const pos = @bitCast([2]u16, @intCast(u32, lParam));
 
                         platform.revent = Parent.Event{
                             .MouseMotion = .{
@@ -199,58 +200,58 @@ pub fn Platform(comptime Parent: anytype) type {
                             },
                         };
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
-                .LBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttondown
-                .LBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttonup
-                .RBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttondown
-                .RBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttonup
-                .MBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttondown
-                .MBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttonup
+                windows.WM_LBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttondown
+                windows.WM_LBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttonup
+                windows.WM_RBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttondown
+                windows.WM_RBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-rbuttonup
+                windows.WM_MBUTTONDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttondown
+                windows.WM_MBUTTONUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mbuttonup
                 => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
                         var platform = @ptrCast(*Self, window.parent.platform);
 
-                        const pos = @bitCast([2]u16, @intCast(u32, @ptrToInt(lParam)));
+                        const pos = @bitCast([2]u16, @intCast(u32, lParam));
 
                         var data = zwl.MouseButtonEvent{
                             .x = @intCast(i16, pos[0]),
                             .y = @intCast(i16, pos[1]),
-                            .button = switch (msg) {
-                                .LBUTTONDOWN, .LBUTTONUP => .left,
-                                .MBUTTONDOWN, .MBUTTONUP => .middle,
-                                .RBUTTONDOWN, .RBUTTONUP => .right,
+                            .button = switch (uMsg) {
+                                windows.WM_LBUTTONDOWN, windows.WM_LBUTTONUP => .left,
+                                windows.WM_MBUTTONDOWN, windows.WM_MBUTTONUP => .middle,
+                                windows.WM_RBUTTONDOWN, windows.WM_RBUTTONUP => .right,
                                 else => unreachable,
                             },
                         };
 
-                        platform.revent = if ((msg == .LBUTTONDOWN) or (msg == .MBUTTONDOWN) or (msg == .RBUTTONDOWN))
+                        platform.revent = if ((uMsg == windows.WM_LBUTTONDOWN) or (uMsg == windows.WM_MBUTTONDOWN) or (uMsg == windows.WM_RBUTTONDOWN))
                             Parent.Event{ .MouseButtonDown = data }
                         else
                             Parent.Event{ .MouseButtonUp = data };
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
-                .KEYDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
-                .KEYUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
+                windows.WM_KEYDOWN, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
+                windows.WM_KEYUP, // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
                 => {
-                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, 0)));
+                    var window_opt = @intToPtr(?*Window, @bitCast(usize, windows.GetWindowLongPtrW(hwnd, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0))));
                     if (window_opt) |window| {
                         var platform = @ptrCast(*Self, window.parent.platform);
 
                         var kevent = zwl.KeyEvent{
-                            .scancode = @truncate(u8, @ptrToInt(lParam) >> 16), // 16-23 is the OEM scancode
+                            .scancode = @truncate(u8, @bitCast(usize, lParam) >> 16), // 16-23 is the OEM scancode
                         };
 
-                        platform.revent = if (msg == .KEYDOWN)
+                        platform.revent = if (uMsg == windows.WM_KEYDOWN)
                             Parent.Event{ .KeyDown = kevent }
                         else
                             Parent.Event{ .KeyUp = kevent };
                     } else {
-                        log.emerg("Received message {} for unknown window {}", .{ msg, hwnd });
+                        log.err("Received message {} for unknown window {}", .{ uMsg, hwnd });
                     }
                 },
                 else => {
@@ -258,7 +259,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     return windows.DefWindowProcW(hwnd, uMsg, wParam, lParam);
                 },
             }
-            return null;
+            return 0;
         }
 
         pub fn waitForEvent(self: *Self) !Parent.Event {
@@ -309,37 +310,41 @@ pub fn Platform(comptime Parent: anytype) type {
 
                 var namebuf: [512]u8 = undefined;
                 var name_allocator = std.heap.FixedBufferAllocator.init(&namebuf);
-                const title = try std.unicode.utf8ToUtf16LeWithNull(&name_allocator.allocator, options.title orelse "");
-                var style: u32 = 0;
-                style += if (options.visible == true) @as(u32, windows.WS_VISIBLE) else 0;
-                style += if (options.decorations == true) @as(u32, windows.WS_CAPTION | windows.WS_MAXIMIZEBOX | windows.WS_MINIMIZEBOX | windows.WS_SYSMENU) else 0;
-                style += if (options.resizeable == true) @as(u32, windows.WS_SIZEBOX) else 0;
+                const title = try std.unicode.utf8ToUtf16LeWithNull(name_allocator.allocator(), options.title orelse "");
+                const style = windows.WINDOW_STYLE.initFlags(.{
+                    .VISIBLE = if (options.visible == true) 1 else 0,
+                    .CAPTION = if (options.decorations == true) 1 else 0,
+                    .TABSTOP = if (options.decorations == true) 1 else 0,
+                    .GROUP = if (options.decorations == true) 1 else 0,
+                    .SYSMENU = if (options.decorations == true) 1 else 0,
+                    .THICKFRAME = if (options.resizeable == true) 1 else 0,
+                });
 
                 // mode, transparent...
                 // CLIENT_RECT stuff... GetClientRect, GetWindowRect
 
                 var rect = windows.RECT{ .left = 0, .top = 0, .right = self.width, .bottom = self.height };
-                _ = windows.AdjustWindowRectEx(&rect, style, 0, 0);
+                _ = windows.AdjustWindowRectEx(&rect, style, 0, windows.WINDOW_EX_STYLE.initFlags(.{}));
                 const x = windows.CW_USEDEFAULT;
                 const y = windows.CW_USEDEFAULT;
                 const w = rect.right - rect.left;
                 const h = rect.bottom - rect.top;
 
-                const handle = windows.CreateWindowExW(0, classname, title, style, x, y, w, h, null, null, platform.instance, self) orelse
+                const handle = windows.CreateWindowExW(windows.WINDOW_EX_STYLE.initFlags(.{}), classname, title, style, x, y, w, h, null, null, platform.instance, self) orelse
                     return error.CreateWindowFailed;
 
                 self.handle = handle;
 
                 self.backend = switch (options.backend) {
                     .software => blk: {
-                        const hDC = windows.getDC(handle) catch return error.CreateWindowFailed;
-                        defer _ = windows.releaseDC(handle, hDC);
+                        const hDC = windows.GetDC(handle) orelse return error.CreateWindowFailed;
+                        defer _ = windows.ReleaseDC(handle, hDC);
 
                         var render_context = RenderContext{
                             .memory_dc = undefined,
                             .bitmap = undefined,
                         };
-                        render_context.memory_dc = windows.CreateCompatibleDC(hDC) orelse return error.CreateWindowFailed;
+                        render_context.memory_dc = windows.CreateCompatibleDC(hDC);
                         errdefer _ = windows.DeleteDC(render_context.memory_dc);
 
                         render_context.bitmap = render_context.createBitmap(self.width, self.height) catch return error.CreateWindowFailed;
@@ -350,6 +355,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     .opengl => |requested_gl| blk: {
                         if (Parent.settings.backends_enabled.opengl) {
                             const pfd = windows.PIXELFORMATDESCRIPTOR{
+                                .nSize = @sizeOf(windows.PIXELFORMATDESCRIPTOR),
                                 .nVersion = 1,
                                 .dwFlags = windows.PFD_DRAW_TO_WINDOW | windows.PFD_SUPPORT_OPENGL | windows.PFD_DOUBLEBUFFER,
                                 .iPixelType = windows.PFD_TYPE_RGBA,
@@ -396,7 +402,7 @@ pub fn Platform(comptime Parent: anytype) type {
                                     nMaxFormats: c_uint,
                                     piFormats: [*]c_int,
                                     nNumFormats: *c_uint,
-                                ) callconv(windows.WINAPI) windows.BOOL,
+                                ) callconv(std.os.windows.WINAPI) windows.BOOL,
                                 windows.wglGetProcAddress("wglChoosePixelFormatARB") orelse return error.InvalidOpenGL,
                             );
 
@@ -405,25 +411,35 @@ pub fn Platform(comptime Parent: anytype) type {
                                     hDC: windows.HDC,
                                     hshareContext: ?windows.HGLRC,
                                     attribList: ?[*:0]const c_int,
-                                ) callconv(windows.WINAPI) ?windows.HGLRC,
+                                ) callconv(std.os.windows.WINAPI) ?windows.HGLRC,
                                 windows.wglGetProcAddress("wglCreateContextAttribsARB") orelse return error.InvalidOpenGL,
                             );
 
+                            // See https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt for all values
+                            const WGL_DRAW_TO_WINDOW_ARB = 0x2001;
+                            const WGL_SUPPORT_OPENGL_ARB = 0x2010;
+                            const WGL_DOUBLE_BUFFER_ARB = 0x2011;
+                            const WGL_PIXEL_TYPE_ARB = 0x2013;
+                            const WGL_COLOR_BITS_ARB = 0x2014;
+                            const WGL_DEPTH_BITS_ARB = 0x2022;
+                            const WGL_STENCIL_BITS_ARB = 0x2023;
+                            const WGL_TYPE_RGBA_ARB = 0x202B;
+
                             const pf_attributes = [_:0]c_int{
-                                windows.WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
-                                windows.WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
-                                windows.WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
-                                windows.WGL_PIXEL_TYPE_ARB,     windows.WGL_TYPE_RGBA_ARB,
-                                windows.WGL_COLOR_BITS_ARB,     32,
-                                windows.WGL_DEPTH_BITS_ARB,     24,
-                                windows.WGL_STENCIL_BITS_ARB,   8,
+                                WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
+                                WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
+                                WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
+                                WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+                                WGL_COLOR_BITS_ARB,     32,
+                                WGL_DEPTH_BITS_ARB,     24,
+                                WGL_STENCIL_BITS_ARB,   8,
                                 0, // End
                             };
 
                             var pixelFormat: c_int = undefined;
                             var numFormats: c_uint = undefined;
 
-                            if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == windows.FALSE)
+                            if (wglChoosePixelFormatARB(hDC, &pf_attributes, null, 1, @ptrCast([*]c_int, &pixelFormat), &numFormats) == win32zig.FALSE)
                                 return error.InvalidOpenGL;
                             if (numFormats == 0) // AMD driver may return numFormats > nMaxFormats, see issue #14
                                 return error.InvalidOpenGL;
@@ -431,11 +447,19 @@ pub fn Platform(comptime Parent: anytype) type {
                             if (dummy_pixel_format != pixelFormat)
                                 @panic("This case is not implemented yet: Recreation of the window is required here!");
 
+                            const WGL_CONTEXT_MAJOR_VERSION_ARB = 0x2091;
+                            const WGL_CONTEXT_MINOR_VERSION_ARB = 0x2092;
+                            const WGL_CONTEXT_FLAGS_ARB = 0x2094;
+                            const WGL_CONTEXT_DEBUG_BIT_ARB = 0x00000001;
+                            const WGL_CONTEXT_PROFILE_MASK_ARB = 0x9126;
+                            const WGL_CONTEXT_CORE_PROFILE_BIT_ARB = 0x00000001;
+                            const WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB = 0x00000002;
+
                             const ctx_attributes = [_:0]c_int{
-                                windows.WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
-                                windows.WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
-                                windows.WGL_CONTEXT_FLAGS_ARB,         windows.WGL_CONTEXT_DEBUG_BIT_ARB,
-                                windows.WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) windows.WGL_CONTEXT_CORE_PROFILE_BIT_ARB else windows.WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                                WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
+                                WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
+                                WGL_CONTEXT_FLAGS_ARB,         WGL_CONTEXT_DEBUG_BIT_ARB,
+                                WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) WGL_CONTEXT_CORE_PROFILE_BIT_ARB else WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
                                 0,
                             };
 
@@ -446,7 +470,7 @@ pub fn Platform(comptime Parent: anytype) type {
                             ) orelse return error.InvalidOpenGL;
                             errdefer _ = windows.wglDeleteContext(gl_context);
 
-                            if (windows.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
+                            if (windows.wglMakeCurrent(hDC, gl_context) == win32zig.FALSE)
                                 return error.InvalidOpenGL;
 
                             break :blk Backend{ .opengl = gl_context };
@@ -479,7 +503,7 @@ pub fn Platform(comptime Parent: anytype) type {
                 }
 
                 if (self.handle) |handle| {
-                    _ = windows.SetWindowLongPtrW(handle, 0, 0);
+                    _ = windows.SetWindowLongPtrW(handle, @intToEnum(windows.WINDOW_LONG_PTR_INDEX, 0), 0);
                     _ = windows.DestroyWindow(handle);
                 }
                 var platform = @ptrCast(*Self, self.parent.platform);
@@ -540,7 +564,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     _ = windows.InvalidateRect(
                         handle,
                         null,
-                        windows.FALSE, // We paint over *everything*
+                        win32zig.FALSE, // We paint over *everything*
                     );
                 }
             }
@@ -553,7 +577,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     height: u16,
 
                     fn destroy(self: *@This()) void {
-                        _ = windows.DeleteObject(self.handle.toGdiObject());
+                        _ = windows.DeleteObject(self.handle);
                         self.* = undefined;
                     }
                 };
@@ -568,7 +592,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     bmi.bmiHeader.biHeight = -@as(i32, height);
                     bmi.bmiHeader.biPlanes = 1;
                     bmi.bmiHeader.biBitCount = 32;
-                    bmi.bmiHeader.biCompression = @enumToInt(windows.Compression.BI_RGB);
+                    bmi.bmiHeader.biCompression = windows.BI_RGB;
 
                     var bmp = Bitmap{
                         .width = width,
@@ -580,8 +604,8 @@ pub fn Platform(comptime Parent: anytype) type {
                     bmp.handle = windows.CreateDIBSection(
                         self.memory_dc,
                         &bmi,
-                        @enumToInt(windows.DIBColors.DIB_RGB_COLORS),
-                        @ptrCast(**anyopaque, &bmp.pixels),
+                        windows.DIB_RGB_COLORS,
+                        @ptrCast(?*?*anyopaque, &bmp.pixels),
                         null,
                         0,
                     ) orelse return error.CreateBitmapError;
