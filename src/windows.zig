@@ -29,7 +29,7 @@ pub fn Platform(comptime Parent: anytype) type {
 
             const window_class_info = windows.WNDCLASSEXW{
                 .cbSize = @sizeOf(windows.WNDCLASSEXW),
-                .style = windows.WNDCLASS_STYLES.initFlags(.{.OWNDC = 1, .HREDRAW = 1, .VREDRAW = 1}),
+                .style = windows.WNDCLASS_STYLES.initFlags(.{ .OWNDC = 1, .HREDRAW = 1, .VREDRAW = 1 }),
                 .lpfnWndProc = windowProc,
                 .cbClsExtra = 0,
                 .cbWndExtra = @sizeOf(usize),
@@ -355,6 +355,7 @@ pub fn Platform(comptime Parent: anytype) type {
                     .opengl => |requested_gl| blk: {
                         if (Parent.settings.backends_enabled.opengl) {
                             const pfd = windows.PIXELFORMATDESCRIPTOR{
+                                .nSize = @sizeOf(windows.PIXELFORMATDESCRIPTOR),
                                 .nVersion = 1,
                                 .dwFlags = windows.PFD_DRAW_TO_WINDOW | windows.PFD_SUPPORT_OPENGL | windows.PFD_DOUBLEBUFFER,
                                 .iPixelType = windows.PFD_TYPE_RGBA,
@@ -414,14 +415,24 @@ pub fn Platform(comptime Parent: anytype) type {
                                 windows.wglGetProcAddress("wglCreateContextAttribsARB") orelse return error.InvalidOpenGL,
                             );
 
+                            // See https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt for all values
+                            const WGL_DRAW_TO_WINDOW_ARB = 0x2001;
+                            const WGL_SUPPORT_OPENGL_ARB = 0x2010;
+                            const WGL_DOUBLE_BUFFER_ARB = 0x2011;
+                            const WGL_PIXEL_TYPE_ARB = 0x2013;
+                            const WGL_COLOR_BITS_ARB = 0x2014;
+                            const WGL_DEPTH_BITS_ARB = 0x2022;
+                            const WGL_STENCIL_BITS_ARB = 0x2023;
+                            const WGL_TYPE_RGBA_ARB = 0x202B;
+
                             const pf_attributes = [_:0]c_int{
-                                windows.WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
-                                windows.WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
-                                windows.WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
-                                windows.WGL_PIXEL_TYPE_ARB,     windows.WGL_TYPE_RGBA_ARB,
-                                windows.WGL_COLOR_BITS_ARB,     32,
-                                windows.WGL_DEPTH_BITS_ARB,     24,
-                                windows.WGL_STENCIL_BITS_ARB,   8,
+                                WGL_DRAW_TO_WINDOW_ARB, gl.GL_TRUE,
+                                WGL_SUPPORT_OPENGL_ARB, gl.GL_TRUE,
+                                WGL_DOUBLE_BUFFER_ARB,  gl.GL_TRUE,
+                                WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+                                WGL_COLOR_BITS_ARB,     32,
+                                WGL_DEPTH_BITS_ARB,     24,
+                                WGL_STENCIL_BITS_ARB,   8,
                                 0, // End
                             };
 
@@ -436,11 +447,19 @@ pub fn Platform(comptime Parent: anytype) type {
                             if (dummy_pixel_format != pixelFormat)
                                 @panic("This case is not implemented yet: Recreation of the window is required here!");
 
+                            const WGL_CONTEXT_MAJOR_VERSION_ARB = 0x2091;
+                            const WGL_CONTEXT_MINOR_VERSION_ARB = 0x2092;
+                            const WGL_CONTEXT_FLAGS_ARB = 0x2094;
+                            const WGL_CONTEXT_DEBUG_BIT_ARB = 0x00000001;
+                            const WGL_CONTEXT_PROFILE_MASK_ARB = 0x9126;
+                            const WGL_CONTEXT_CORE_PROFILE_BIT_ARB = 0x00000001;
+                            const WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB = 0x00000002;
+
                             const ctx_attributes = [_:0]c_int{
-                                windows.WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
-                                windows.WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
-                                windows.WGL_CONTEXT_FLAGS_ARB,         windows.WGL_CONTEXT_DEBUG_BIT_ARB,
-                                windows.WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) windows.WGL_CONTEXT_CORE_PROFILE_BIT_ARB else windows.WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                                WGL_CONTEXT_MAJOR_VERSION_ARB, requested_gl.major,
+                                WGL_CONTEXT_MINOR_VERSION_ARB, requested_gl.minor,
+                                WGL_CONTEXT_FLAGS_ARB,         WGL_CONTEXT_DEBUG_BIT_ARB,
+                                WGL_CONTEXT_PROFILE_MASK_ARB,  if (requested_gl.core) WGL_CONTEXT_CORE_PROFILE_BIT_ARB else WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
                                 0,
                             };
 
@@ -451,7 +470,7 @@ pub fn Platform(comptime Parent: anytype) type {
                             ) orelse return error.InvalidOpenGL;
                             errdefer _ = windows.wglDeleteContext(gl_context);
 
-                            if (windows.wglMakeCurrent(hDC, gl_context) == windows.FALSE)
+                            if (windows.wglMakeCurrent(hDC, gl_context) == win32zig.FALSE)
                                 return error.InvalidOpenGL;
 
                             break :blk Backend{ .opengl = gl_context };
